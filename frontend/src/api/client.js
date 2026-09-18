@@ -15,6 +15,7 @@ export const fitnessApi = {
   // Feature 2: Schedules
   getSchedules: (programId) => apiClient.get(`/schedules?program_id=${programId}`),
   createSchedule: (scheduleData) => apiClient.post('/schedules', scheduleData),
+  advanceSchedule: (scheduleId) => apiClient.post(`/schedules/${scheduleId}/advance`),
 
   // Feature 3 & 4: Logs & Analysis
   logWorkout: (logData) => apiClient.post('/workout-logs', logData),

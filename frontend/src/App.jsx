@@ -16,6 +16,10 @@ const EXERCISE_OPTIONS = Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => ({
   label: cfg.label,
 }));
 
+// Targets accumulate by repeated float addition, so trim display noise
+// (e.g. 22.200000000000003) without showing a pointless ".0" on whole numbers.
+const formatWeight = (kg) => Number(kg.toFixed(2)).toString();
+
 // ── App ──────────────────────────────────────────────────────────────────────
 function App() {
   // Navigation
@@ -28,6 +32,8 @@ function App() {
   const [planSets, setPlanSets] = useState('');
   const [planReps, setPlanReps] = useState('');
   const [planWeight, setPlanWeight] = useState('0');
+  const [planWeightInc, setPlanWeightInc] = useState('0');
+  const [planRepInc, setPlanRepInc] = useState('0');
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
@@ -38,6 +44,9 @@ function App() {
   const [liveReps, setLiveReps] = useState(0);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
+  // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
+  const [progression, setProgression] = useState(null);
+  const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
@@ -60,7 +69,11 @@ function App() {
           )
         )
       );
-      setPlans(allSchedules.flat());
+      setPlans(
+        allSchedules.flat().sort(
+          (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
+        )
+      );
     } catch (err) {
       console.error('loadPlans:', err);
     }
@@ -109,7 +122,7 @@ function App() {
     try {
       // Create a program with the plan name, then add one schedule
       const progRes = await fitnessApi.createProgram(planName.trim());
-      const programId = progRes.data?.data?.[0]?.id;
+      const programId = progRes.data?.data?.id;
       if (!programId) throw new Error('Could not create plan');
 
       await fitnessApi.createSchedule({
@@ -119,12 +132,16 @@ function App() {
         target_weight: parseFloat(planWeight) || 0,
         target_sets: parseInt(planSets),
         target_reps: parseInt(planReps),
+        weight_increment: Math.max(0, Number(planWeightInc) || 0),
+        rep_increment: Math.max(0, Math.round(Number(planRepInc) || 0)),
       });
 
       setPlanName('');
       setPlanSets('');
       setPlanReps('');
       setPlanWeight('0');
+      setPlanWeightInc('0');
+      setPlanRepInc('0');
       loadPlans();
       alert(`Plan "${planName}" created!`);
     } catch (err) {
@@ -133,6 +150,14 @@ function App() {
   };
 
   // ── Workout Session ───────────────────────────────────────────────────────
+  const resetSession = () => {
+    setSessionState('idle');
+    setCompletedSets([]);
+    setCurrentSet(1);
+    setLiveReps(0);
+    setProgression(null);
+  };
+
   const startSession = () => {
     if (!selectedPlan) { alert('Select a plan first'); return; }
     setCurrentSet(1);
@@ -159,27 +184,61 @@ function App() {
 
   const finishWorkout = async () => {
     try {
-      await fitnessApi.logWorkout({
+      const res = await fitnessApi.logWorkout({
         schedule_id: selectedPlan.id,
         log_name: `Session ${new Date().toLocaleDateString()}`,
         actual_weight: selectedPlan.target_weight,
         actual_reps: completedSets,
       });
-      setSessionState('idle');
-      setCompletedSets([]);
-      setCurrentSet(1);
+
       await loadHistory();
+
+      const passed = res.data?.status_calculated === 'PASS';
+      const weightInc = selectedPlan.weight_increment || 0;
+      const repInc = selectedPlan.rep_increment || 0;
+
+      // On a PASS with something to progress by, stay here and ask first.
+      if (passed && (weightInc > 0 || repInc > 0)) {
+        setProgression({
+          nextWeek: (selectedPlan.week || 1) + 1,
+          nextWeight: selectedPlan.target_weight + weightInc,
+          nextReps: selectedPlan.target_reps + repInc,
+        });
+        return;
+      }
+
+      resetSession();
       setActiveTab('progress');
     } catch (err) {
       alert('Error saving workout: ' + err.message);
     }
   };
 
+  const confirmProgression = async () => {
+    // Guard against a double tap: the backend's existence check and its insert
+    // are two separate round trips, so two in-flight calls can both decide to
+    // create week+1 and produce a duplicate the app has no way to delete.
+    if (advancing) return;
+    setAdvancing(true);
+    try {
+      await fitnessApi.advanceSchedule(selectedPlan.id);
+      await loadPlans();
+      resetSession();
+      setActiveTab('progress');
+    } catch (err) {
+      alert('Error creating next week: ' + err.message);
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  const skipProgression = () => {
+    resetSession();
+    setActiveTab('progress');
+  };
+
   const cancelSession = () => {
-    setSessionState('idle');
-    setCompletedSets([]);
-    setCurrentSet(1);
-    setLiveReps(0);
+    resetSession();
   };
 
   // ── Chart Data ────────────────────────────────────────────────────────────
@@ -243,7 +302,7 @@ function App() {
                         <option value="">-- Choose a plan --</option>
                         {plans.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.programName} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
+                            {p.programName} · Week {p.week} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
                           </option>
                         ))}
                       </select>
@@ -413,21 +472,57 @@ function App() {
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button className="btn btn-success" onClick={finishWorkout} style={{ flex: 2 }}>
-                    💾 Save & View Progress
-                  </button>
-                  <button
-                    onClick={cancelSession}
-                    style={{
-                      flex: 1, background: 'transparent', color: 'var(--text-secondary)',
-                      border: '1px solid var(--border)', borderRadius: 10,
-                      padding: 13, cursor: 'pointer', fontSize: '0.85rem',
-                    }}
-                  >
-                    Discard
-                  </button>
-                </div>
+                {progression ? (
+                  <div style={{
+                    background: 'rgba(99,102,241,0.12)',
+                    border: '1px solid rgba(99,102,241,0.35)',
+                    borderRadius: 14, padding: '16px', marginTop: 12,
+                  }}>
+                    <div style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 4 }}>
+                      ⬆ You passed! Ready for Week {progression.nextWeek}?
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+                      Next target: {progression.nextWeight > 0 ? `${formatWeight(progression.nextWeight)}kg × ` : ''}
+                      {progression.nextReps} reps × {selectedPlan.target_sets} sets
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-success"
+                        onClick={confirmProgression}
+                        disabled={advancing}
+                        style={{ flex: 2 }}
+                      >
+                        {advancing ? 'Creating…' : `Create Week ${progression.nextWeek}`}
+                      </button>
+                      <button
+                        onClick={skipProgression}
+                        style={{
+                          flex: 1, background: 'transparent', color: 'var(--text-secondary)',
+                          border: '1px solid var(--border)', borderRadius: 10,
+                          padding: 13, cursor: 'pointer', fontSize: '0.85rem',
+                        }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button className="btn btn-success" onClick={finishWorkout} style={{ flex: 2 }}>
+                      💾 Save & View Progress
+                    </button>
+                    <button
+                      onClick={cancelSession}
+                      style={{
+                        flex: 1, background: 'transparent', color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)', borderRadius: 10,
+                        padding: 13, cursor: 'pointer', fontSize: '0.85rem',
+                      }}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
@@ -473,6 +568,19 @@ function App() {
                     <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
                   </div>
                 </div>
+                <div className="input-group">
+                  <label>Progression — on a passed workout, increase next week by</label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label>Weight (kg)</label>
+                      <input type="number" min="0" step="0.5" placeholder="0" value={planWeightInc} onChange={e => setPlanWeightInc(e.target.value)} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label>Reps / Set</label>
+                      <input type="number" min="0" step="1" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
                 <button type="submit" className="btn btn-primary">+ Create Plan</button>
               </form>
             </div>
@@ -483,13 +591,15 @@ function App() {
                 {plans.map(p => (
                   <div key={p.id} className="log-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{p.programName}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        {p.programName} · Week {p.week}
+                      </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${p.target_weight}kg` : ''}
+                        {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
                       </div>
                     </div>
                     <button
-                      onClick={() => { setSelectedPlan(p); setActiveTab('counter'); }}
+                      onClick={() => { resetSession(); setSelectedPlan(p); setActiveTab('counter'); }}
                       style={{
                         background: '#6366f1', color: '#fff', border: 'none',
                         borderRadius: 8, padding: '7px 12px', cursor: 'pointer',

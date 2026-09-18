@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,13 +24,15 @@ class ProgramCreate(BaseModel):
     name: str
 
 class ScheduleCreate(BaseModel):
-    program_id: str     
-    week: int            
-    exercise_name: str   
-    target_weight: float 
-    target_sets: int     
-    target_reps: int     
+    program_id: str
+    week: int
+    exercise_name: str
+    target_weight: float
+    target_sets: int
+    target_reps: int
     notes: str | None = None
+    weight_increment: float = Field(default=0, ge=0)
+    rep_increment: int = Field(default=0, ge=0)
 
 class WorkoutLogCreate(BaseModel):
     schedule_id: str     
@@ -72,12 +74,69 @@ def create_schedule(schedule: ScheduleCreate):
             "exercise_name": schedule.exercise_name,
             "target_weight": schedule.target_weight,
             "target_sets": schedule.target_sets,
-            "target_reps": schedule.target_reps
+            "target_reps": schedule.target_reps,
+            "weight_increment": schedule.weight_increment,
+            "rep_increment": schedule.rep_increment
         }).execute()
         
         if len(response.data) == 0:
             raise HTTPException(status_code=400, detail="Failed to create schedule.")
         return {"message": "Schedule rule saved!", "data": response.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/schedules/{schedule_id}/advance")
+def advance_schedule(schedule_id: str):
+    try:
+        sched_res = supabase.table("schedules").select("*").eq("id", schedule_id).execute()
+
+        if len(sched_res.data) == 0:
+            raise HTTPException(status_code=404, detail="Schedule not found.")
+
+        current = sched_res.data[0]
+        next_week = current["week"] + 1
+
+        # Idempotent: if next week already exists for this program, return it.
+        # select("*") is required: the whole row is carried forward into the
+        # insert below, and the test fake does not catch a missing column.
+        existing = (
+            supabase.table("schedules").select("*")
+            .eq("program_id", current["program_id"])
+            .eq("week", next_week)
+            .eq("exercise_name", current["exercise_name"])
+            .execute()
+        )
+        if len(existing.data) > 0:
+            return {
+                "message": "Next week's schedule already exists.",
+                "data": existing.data[0]
+            }
+
+        # Defensive: the migration backfills existing rows to 0, so None only
+        # shows up if this runs against a database where it hasn't been applied.
+        weight_increment = current.get("weight_increment") or 0
+        rep_increment = current.get("rep_increment") or 0
+
+        response = supabase.table("schedules").insert({
+            "program_id": current["program_id"],
+            "week": next_week,
+            "exercise_name": current["exercise_name"],
+            "target_weight": current["target_weight"] + weight_increment,
+            "target_sets": current["target_sets"],
+            "target_reps": current["target_reps"] + rep_increment,
+            "weight_increment": weight_increment,
+            "rep_increment": rep_increment
+        }).execute()
+
+        if len(response.data) == 0:
+            raise HTTPException(status_code=400, detail="Failed to create next week's schedule.")
+
+        return {
+            "message": "Next week's schedule created!",
+            "data": response.data[0]
+        }
     except HTTPException:
         raise
     except Exception as e:

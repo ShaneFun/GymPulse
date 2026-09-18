@@ -26,7 +26,7 @@ GymPulse is an intelligent web application designed to automatically track, coun
 - **📸 Computer Vision Rep Counting**
   Tracks 8 different exercises (Squats, Bicep Curls, Push-ups, etc.) by mapping 33 3D anatomical body keypoints using the device camera.
 - **📊 Automated Analytics & Progression**
-  Logs your performance and compares it against your customized target schedules. Automatically assigns PASS/FAIL scores and generates progressive overload recommendations.
+  Logs your performance and compares it against your customized target schedules. Automatically assigns PASS/FAIL scores, and when you pass, offers to generate next week's plan with your chosen weight and rep increases already applied.
 - **📈 Visual Progress Dashboard**
   Interactive charts tracking your strength progression and completion rates over time.
 
