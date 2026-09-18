@@ -17,4 +17,4 @@ typing_extensions==4.16.0
 uvicorn==0.51.0
 python-dotenv
 supabase==2.31.0
-pytest
+pytest==9.1.1

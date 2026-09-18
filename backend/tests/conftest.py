@@ -1,3 +1,23 @@
+"""Pytest fixtures for backend/app/main.py, built on an in-memory fake of the
+supabase-py client.
+
+The fake is deliberately minimal and is more permissive than real supabase-py
+in a few specific ways that later tasks should keep in mind when TDD-ing
+against it:
+
+- `FakeSupabase.table(name)` auto-creates any table name on demand, and
+  inserts are never validated against a schema. A typo'd table name or a
+  column that doesn't exist in the real database will pass tests here and
+  fail only against production.
+- `FakeQuery.eq` compares with `str(...) == str(...)`, which is more
+  permissive than postgrest. In particular `None` stringifies to `"None"`
+  and will never match a real SQL null, so null-handling semantics are not
+  represented.
+- `FakeQuery.select(*columns)` ignores the requested columns and always
+  returns whole rows, so a bug where code reads a field it forgot to select
+  will not be caught.
+"""
+
 import sys
 from pathlib import Path
 
@@ -34,6 +54,8 @@ class FakeQuery:
 
 
 class FakeInsert:
+    """Mimics the chained insert builder: .insert(row).execute()"""
+
     def __init__(self, table, row):
         self._table = table
         self._row = row
@@ -47,6 +69,9 @@ class FakeInsert:
 
 
 class FakeTable:
+    """Stands in for a supabase-py table handle, i.e. the object returned by
+    `supabase.table(name)`, holding its rows in memory."""
+
     def __init__(self, name):
         self.name = name
         self.rows = []
