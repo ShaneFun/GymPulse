@@ -11,104 +11,112 @@ The current interface reads as a generic AI-generated prototype rather than a re
 
 The root structural cause is that styling lives in two places with no shared scale: [frontend/src/index.css](../../../frontend/src/index.css) defines classes, while [frontend/src/App.jsx](../../../frontend/src/App.jsx) carries roughly 80 hardcoded inline style objects that bypass them.
 
+## Direction
+
+Soft light "Apple-style" mobile UI, taken from a reference the user supplied: warm off-white ground, oversized bold headings, large-radius white cards floating on soft shadows, a single lime accent, black pill buttons, and thin line icons.
+
+One deliberate adaptation: **the live camera/rep-counter is a dark card** in an otherwise light app. A bright screen washes out the pose overlay and is harder to read at arm's length in a gym. The reference itself mixes a dark calendar card into a light layout, so this reads as part of the aesthetic rather than an inconsistency.
+
 ## Goals
 
-Replace the visual language with a high-contrast athletic direction optimised for the app's real usage context: glancing at a propped-up phone mid-set, from about a metre away, in variable gym lighting. Add a fourth "Me" tab. Change no behaviour.
+Replace the visual language to match that reference, add a fourth "Me" tab, and change no behaviour.
 
 ## Non-goals
 
 - **Authentication is explicitly out of scope.** The user wants real accounts with login, but that is a separate project: it requires Supabase Auth, a `user_id` column, real RLS policies replacing the current `using (true)` ones, updates to every API call, and a decision about existing ownerless rows. It gets its own spec. This redesign only reserves a place for it in the Me tab.
 - No changes to rep-counting logic, the progression feature, or any endpoint.
-- No light theme.
-
-## Direction
-
-**Athletic / high-contrast.** Near-black ground, a single warm accent used sparingly, oversized numerals, no gradients and no blur.
+- No avatar clusters, segmented pill toolbars, or multi-colour pastel tag systems from the reference beyond the badge use described below.
 
 ## Palette
 
 ```
---bg          #0A0A0B    near-black page ground
---surface     #141416    cards
---surface-2   #1C1C1F    inputs, chips
---border      rgba(255,255,255,0.08)
---text        #FAFAFA
---text-dim    #8A8A93
---accent      #FF5C1A    orange — primary actions and active states only
---pass        #22C55E
---fail        #EF4444
+--bg           #F2F0ED   warm off-white page ground
+--bg-tint      #EDE9E4   faint warm edge tint
+--surface      #FFFFFF   cards
+--surface-2    #F7F5F2   inputs, chips, inset rows
+--surface-dark #111113   camera card, dark surfaces
+--text         #0A0A0A
+--text-dim     #8E8E93
+--text-on-dark #FAFAFA
+--accent       #D4F034   lime
+--accent-ink   #0A0A0A   text on lime
+--pass         #22C55E
+--fail         #EF4444
+--shadow-sm    0 1px 3px rgba(0,0,0,0.06)
+--shadow-md    0 4px 16px rgba(0,0,0,0.05)
 ```
 
-Rules: no `linear-gradient` anywhere; no `backdrop-filter`. The accent is reserved for primary actions, the active tab, and the highlighted joint in the camera overlay. Green and red are reserved exclusively for PASS/FAIL semantics and never used decoratively.
+Rules: no `linear-gradient` on text or buttons; no `backdrop-filter`. Cards are separated by shadow, not borders. The lime accent appears on at most one or two elements per screen — primary action, active tab — never as a large fill. Green and red are reserved exclusively for PASS/FAIL and never used decoratively.
 
-**Dark only.** The existing half-finished `prefers-color-scheme: light` block is removed rather than maintained — this direction has no light counterpart worth double-maintaining.
+Light theme only. The existing `prefers-color-scheme: light` block is replaced wholesale; the dark palette is removed rather than maintained.
 
 ## Typography
 
-Inter is named in the current font stack but never actually loaded, so the app has been rendering in system fallback. Load Inter (weights 400/600/700/800) from Google Fonts.
+Inter is named in the current font stack but never loaded, so the app has been rendering in system fallback. Load Inter (400/500/600/700/800) from Google Fonts. Inter is the cross-platform stand-in for SF Pro, which the reference uses.
 
-| Role | Size | Weight | Notes |
+| Role | Size | Weight | Tracking |
 |---|---|---|---|
-| Rep counter | 72px | 800 | `tabular-nums` |
-| Screen title | 24px | 700 | |
-| Section heading | 17px | 600 | |
-| Body | 15px | 400 | |
-| Label | 12px | 600 | uppercase, used sparingly |
-| Micro | 11px | 500 | timestamps, units |
+| Screen heading | 34px | 800 | -0.02em |
+| Rep counter | 72px | 800 | -0.03em, `tabular-nums` |
+| Section heading | 17px | 600 | -0.01em |
+| Body | 15px | 400 | normal |
+| Label | 13px | 500 | normal, `--text-dim` |
+| Micro | 11px | 500 | normal |
+
+The oversized bold screen heading is the signature element of the reference and appears at the top of every tab.
 
 All numeric displays use `font-variant-numeric: tabular-nums`. This is functional, not cosmetic: the live rep count currently shifts width as digits change while the user is counting.
 
-The gradient-filled 900-weight title treatment is removed.
+Uppercase micro-labels are dropped except on stat tiles. The gradient-filled 900-weight title treatment is removed.
 
 ## Spacing and shape
 
-A strict 4px scale: 4, 8, 12, 16, 24, 32. Card padding is uniformly 16px, border radius uniformly 12px. Every current off-scale value is snapped to the nearest step.
+Spacing scale: 4, 8, 12, 16, 20, 24, 32. Every current off-scale value snaps to the nearest step.
+
+Radii: cards 24px, inner elements and inputs 16px, pills and buttons 999px. Card padding 20px.
 
 ## Icons
 
-`lucide-react` is already a dependency ([package.json](../../../frontend/package.json)) but has never been imported. It replaces all emoji.
+`lucide-react` is already a dependency ([package.json](../../../frontend/package.json)) but has never been imported. It replaces all emoji, at `strokeWidth={1.5}` to match the reference's thin line style.
 
-Tab bar: `Camera`, `ClipboardList`, `TrendingUp`, `User`. Buttons and empty states take appropriate icons at 20px, `currentColor`.
+Tab bar: `Camera`, `ClipboardList`, `TrendingUp`, `User`.
 
 ## Components
 
-- **Card** — `--surface`, 1px `--border`, radius 12, padding 16. No shadow, no blur.
-- **Button** — primary is solid `--accent` with near-black text; secondary is transparent with a 1px border; destructive uses `--fail`. Minimum height 48px.
-- **Input / select** — `--surface-2`, 1px border, radius 12, accent border on focus with no glow ring.
-- **Badge** — PASS/FAIL pills in `--pass`/`--fail` at 12% opacity with a solid text colour.
-- **Stat tile** — large tabular number over a 12px uppercase label; used on the Me tab.
-- **Tab bar** — four items, icon over label, active item in `--accent`.
+- **Card** — `--surface`, radius 24, padding 20, `--shadow-md`, no border.
+- **Dark card** — `--surface-dark`, same radius and shadow, `--text-on-dark`. Used for the camera surface.
+- **Button** — primary is a black pill with white text; accent variant is a lime pill with near-black text, used for the single most important action on a screen; secondary is transparent with a hairline border. Minimum height 48px, radius 999px.
+- **Icon button** — 40px circle, `--surface-2`, thin icon.
+- **Input / select** — `--surface-2`, radius 16, no visible border at rest, accent ring on focus.
+- **Badge** — fully round pill; PASS/FAIL in `--pass`/`--fail` at 12% opacity with solid text colour.
+- **Stat tile** — large tabular number over a 12px uppercase label, on `--surface-2`.
+- **Tab bar** — four items on `--surface` with a top hairline, icon over label, active item in near-black with a lime dot indicator.
 
 ## Screens
 
-**Workout.** The rep counter becomes the dominant element at 72px. Set-progress chips get consistent sizing and spacing. The camera auto/manual toggle moves to the Me tab. The progression banner is restyled flat, keeping its exact Confirm/Skip behaviour.
+Every tab opens with the oversized bold heading.
 
-**Plan.** Form fields on the consistent input style; the progression increment inputs are grouped under a single heading rather than a long inline label. The plan list becomes cards showing program, week, exercise and target.
+**Workout.** Heading "Workout". The plan selector becomes a card. During an active session the camera is a **dark card** with the rep count at 72px in `--text-on-dark` overlaid, set-progress chips beneath it. The camera auto/manual toggle moves to the Me tab. The progression banner is restyled as a light card with a lime primary action, keeping its exact Confirm/Skip behaviour.
 
-**Progress.** The Chart.js line chart is restyled to the new palette (accent line, `--border` grid, `--text-dim` ticks, no fill gradient). The history table is rebuilt as rows with consistent column alignment and tabular figures.
+**Plan.** Heading "Plan". Form fields on the consistent input style; the progression increment inputs grouped under a single section heading rather than a long inline label. Plans render as cards showing program, week, exercise and target.
+
+**Progress.** Heading "Progress". The Chart.js line chart is restyled: near-black line, no fill gradient, `--border`-weight grid, `--text-dim` ticks. The history table becomes rows on white cards with consistent column alignment and tabular figures.
 
 **Me (new).**
-- Stats computed from existing workout logs: total workouts, current streak, pass rate, and personal best per exercise.
-- Settings: camera auto-start toggle (moved off the Workout screen), and a kg/lb unit toggle.
-- Account: a placeholder section stating that login is coming, reserving the location for the auth project.
+- Stats computed from existing workout logs: total workouts, current streak, pass rate, and personal best per exercise, as stat tiles.
+- Settings: camera auto-start toggle, moved off the Workout screen.
+- Account: a placeholder section stating login is coming, reserving the location for the auth project.
 
-## Units toggle — the one behavioural change
+The kg/lb unit toggle discussed earlier is **dropped**. It was the only behavioural change in the redesign, it touches weight values that feed the progression maths, and the user has not said they train in pounds. It can be added later as its own small change.
 
-Every other item in this spec is presentational. The kg/lb toggle is not, so its semantics are fixed here:
+## Camera overlay
 
-- **Storage is always kilograms.** No stored value is ever converted.
-- The preference persists in `localStorage` under `gympulse.units`, defaulting to `kg`.
-- When `lb` is active, displayed weights are converted (`kg × 2.20462`) and rounded to one decimal, and weight *inputs* are interpreted as pounds and converted back to kilograms on submit.
-- The unit suffix is rendered from the active preference rather than hardcoded as `kg`.
+Restyle [AICameraCounter.jsx](../../../frontend/src/AICameraCounter.jsx) to sit inside the dark card: skeleton lines white at 60% opacity, joints white, and the measured joint plus its angle readout in `--accent` lime. This replaces the cyan `#00ffcc` / pink `#ff0055` scheme.
 
 ## Structural cleanup
 
 - Delete [frontend/src/App.css](../../../frontend/src/App.css) — Vite template leftovers (`.hero`, `#next-steps`, `#docs`, `.ticks`), not imported anywhere.
 - Move App.jsx's inline style objects into CSS classes. This is the fix that makes the redesign hold together; without it the file keeps two competing style systems.
-
-## Camera overlay
-
-Restyle [AICameraCounter.jsx](../../../frontend/src/AICameraCounter.jsx): skeleton lines white at 60% opacity, joints white, the measured joint and its angle readout in `--accent`. This replaces the cyan `#00ffcc` / pink `#ff0055` scheme, which clashes with the new palette.
 
 ## Verification
 
@@ -116,4 +124,4 @@ The project has no frontend test framework (eslint + vite only), and adding one 
 
 - `npm run lint` — must stay at exactly the pre-existing 10 errors / 1 warning baseline, with no new entries.
 - `npm run build` — must succeed.
-- Manual pass over all four tabs plus an active camera session, confirming: rep counter legible at arm's length, no gradients or blur remaining, no emoji remaining, progression banner still behaves identically, and the units toggle converting both display and input correctly.
+- Manual pass over all four tabs plus an active camera session, confirming: the rep counter is legible at arm's length against the dark card, no gradients or blur remain, no emoji remain, and the progression banner still behaves identically.
