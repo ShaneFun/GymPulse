@@ -1,8 +1,5 @@
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
-
-// Targets accumulate by repeated float addition, so trim display noise
-// (e.g. 22.200000000000003) without showing a pointless ".0" on whole numbers.
-const formatWeight = (kg) => Number(kg.toFixed(2)).toString();
+import { formatWeight } from '../lib/format';
 
 function WorkoutTab({
   plans, selectedPlan, setSelectedPlan, sessionState, currentSet, completedSets,

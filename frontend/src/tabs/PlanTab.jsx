@@ -1,14 +1,11 @@
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
+import { formatWeight } from '../lib/format';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const EXERCISE_OPTIONS = Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => ({
   key,
   label: cfg.label,
 }));
-
-// Targets accumulate by repeated float addition, so trim display noise
-// (e.g. 22.200000000000003) without showing a pointless ".0" on whole numbers.
-const formatWeight = (kg) => Number(kg.toFixed(2)).toString();
 
 function PlanTab({
   plans, planName, setPlanName, planExercise, setPlanExercise, planSets, setPlanSets,
