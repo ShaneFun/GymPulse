@@ -28,6 +28,8 @@ function App() {
   const [planSets, setPlanSets] = useState('');
   const [planReps, setPlanReps] = useState('');
   const [planWeight, setPlanWeight] = useState('0');
+  const [planWeightInc, setPlanWeightInc] = useState('0');
+  const [planRepInc, setPlanRepInc] = useState('0');
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
@@ -119,12 +121,16 @@ function App() {
         target_weight: parseFloat(planWeight) || 0,
         target_sets: parseInt(planSets),
         target_reps: parseInt(planReps),
+        weight_increment: parseFloat(planWeightInc) || 0,
+        rep_increment: parseInt(planRepInc) || 0,
       });
 
       setPlanName('');
       setPlanSets('');
       setPlanReps('');
       setPlanWeight('0');
+      setPlanWeightInc('0');
+      setPlanRepInc('0');
       loadPlans();
       alert(`Plan "${planName}" created!`);
     } catch (err) {
@@ -471,6 +477,19 @@ function App() {
                   <div style={{ flex: 1 }}>
                     <label>Weight (kg)</label>
                     <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
+                  </div>
+                </div>
+                <div className="input-group">
+                  <label>Progression — on a passed workout, increase next week by</label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label>Weight (kg)</label>
+                      <input type="number" min="0" step="0.5" placeholder="0" value={planWeightInc} onChange={e => setPlanWeightInc(e.target.value)} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label>Reps / Set</label>
+                      <input type="number" min="0" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
+                    </div>
                   </div>
                 </div>
                 <button type="submit" className="btn btn-primary">+ Create Plan</button>
