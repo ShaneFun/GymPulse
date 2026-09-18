@@ -24,13 +24,15 @@ class ProgramCreate(BaseModel):
     name: str
 
 class ScheduleCreate(BaseModel):
-    program_id: str     
-    week: int            
-    exercise_name: str   
-    target_weight: float 
-    target_sets: int     
-    target_reps: int     
+    program_id: str
+    week: int
+    exercise_name: str
+    target_weight: float
+    target_sets: int
+    target_reps: int
     notes: str | None = None
+    weight_increment: float = 0
+    rep_increment: int = 0
 
 class WorkoutLogCreate(BaseModel):
     schedule_id: str     
@@ -72,7 +74,9 @@ def create_schedule(schedule: ScheduleCreate):
             "exercise_name": schedule.exercise_name,
             "target_weight": schedule.target_weight,
             "target_sets": schedule.target_sets,
-            "target_reps": schedule.target_reps
+            "target_reps": schedule.target_reps,
+            "weight_increment": schedule.weight_increment,
+            "rep_increment": schedule.rep_increment
         }).execute()
         
         if len(response.data) == 0:
