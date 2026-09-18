@@ -122,7 +122,7 @@ function App() {
     try {
       // Create a program with the plan name, then add one schedule
       const progRes = await fitnessApi.createProgram(planName.trim());
-      const programId = progRes.data?.data?.[0]?.id;
+      const programId = progRes.data?.data?.id;
       if (!programId) throw new Error('Could not create plan');
 
       await fitnessApi.createSchedule({
@@ -599,7 +599,7 @@ function App() {
                       </div>
                     </div>
                     <button
-                      onClick={() => { setSelectedPlan(p); setActiveTab('counter'); }}
+                      onClick={() => { resetSession(); setSelectedPlan(p); setActiveTab('counter'); }}
                       style={{
                         background: '#6366f1', color: '#fff', border: 'none',
                         borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
