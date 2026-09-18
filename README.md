@@ -53,7 +53,9 @@ Follow these instructions to run the project locally.
 
 ```bash
 # Navigate to project root and create a virtual environment
-python -m venv venv
+cd "c:\Users\siangyou\Desktop\AI fitness Analyze"
+venv\Scripts\activate
+python backend/app/main.py
 
 # Activate the virtual environment
 source venv/Scripts/activate  # (On Windows)
