@@ -7,7 +7,7 @@
   --surface-dark: #111113;
 
   --text:         #0A0A0A;
-  --text-dim:     #8E8E93;
+  --text-dim:     #6B6B70;
   --text-on-dark: #FAFAFA;
 
   --accent:       #D4F034;
@@ -15,6 +15,8 @@
 
   --pass:         #22C55E;
   --fail:         #EF4444;
+  --pass-ink:     #166534;
+  --fail-ink:     #B91C1C;
 
   --hairline:     rgba(0, 0, 0, 0.08);
   --shadow-sm:    0 1px 3px rgba(0, 0, 0, 0.06);
@@ -24,6 +26,15 @@
   --r-card:  24px;
   --r-inner: 16px;
   --r-pill:  999px;
+
+  /* ─── Spacing ─── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -47,6 +58,7 @@ body {
   font-size: 15px;
   line-height: 1.5;
   min-height: 100vh;
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -64,6 +76,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   background: var(--bg);
@@ -72,7 +85,7 @@ body {
 
 .app-content {
   flex: 1;
-  padding: 8px 20px 96px;
+  padding: 8px 20px calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ─── Typography ─── */
@@ -117,6 +130,14 @@ body {
 }
 
 .card-dark {
+  /* Redeclare surface/text tokens so nested components adapt automatically
+     rather than each needing a hand-written dark variant. */
+  --surface:   #1C1C1F;
+  --surface-2: #26262A;
+  --text:      #FAFAFA;
+  --text-dim:  #A1A1A6;
+  --hairline:  rgba(255, 255, 255, 0.12);
+
   background: var(--surface-dark);
   color: var(--text-on-dark);
   border-radius: var(--r-card);
@@ -138,7 +159,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
+  width: auto;
   min-height: 48px;
   padding: 0 20px;
   border: none;
@@ -149,6 +170,8 @@ body {
   cursor: pointer;
   transition: transform 0.12s ease, opacity 0.12s ease;
   touch-action: manipulation;
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .btn:active  { transform: scale(0.97); }
@@ -157,15 +180,23 @@ body {
 .btn-primary   { background: var(--text);    color: #FFFFFF; }
 .btn-accent    { background: var(--accent);  color: var(--accent-ink); }
 .btn-secondary { background: transparent;    color: var(--text); border: 1px solid var(--hairline); }
-.btn-danger    { background: rgba(239,68,68,0.10); color: var(--fail); }
+.btn-danger    { background: rgba(239,68,68,0.10); color: var(--fail-ink); }
+
+.btn-block { width: 100%; }
+
+.btn-sm {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
 
 .btn-row { display: flex; gap: 8px; }
 .btn-row .btn { flex: 1; }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   display: grid;
   place-items: center;
   border: none;
@@ -178,7 +209,7 @@ body {
 /* ─── Forms ─── */
 .input-group { margin-bottom: 16px; }
 
-input, select {
+input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea {
   width: 100%;
   padding: 14px 16px;
   background: var(--surface-2);
@@ -191,13 +222,34 @@ input, select {
   transition: border-color 0.15s ease;
 }
 
+::placeholder { color: var(--text-dim); opacity: 1; }
+
+select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236B6B70' stroke-width='1.5'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 44px;
+}
+
+.card-dark select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23A1A1A6' stroke-width='1.5'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
 input:focus, select:focus {
-  outline: none;
   border-color: var(--accent);
 }
 
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+input:focus-visible, select:focus-visible {
+  outline-offset: 0;
+}
+
 .field-row { display: flex; gap: 8px; }
-.field-row > div { flex: 1; }
+.field-row > * { flex: 1; }
 
 /* ─── Badges ─── */
 .badge {
@@ -210,8 +262,8 @@ input:focus, select:focus {
   font-weight: 600;
 }
 
-.badge-pass { background: rgba(34,197,94,0.12);  color: var(--pass); }
-.badge-fail { background: rgba(239,68,68,0.12);  color: var(--fail); }
+.badge-pass { background: rgba(34,197,94,0.12);  color: var(--pass-ink); }
+.badge-fail { background: rgba(239,68,68,0.12);  color: var(--fail-ink); }
 
 /* ─── Stat tiles ─── */
 .stat-grid {
@@ -256,6 +308,7 @@ input:focus, select:focus {
 
 .set-chip {
   min-width: 56px;
+  flex: 0 0 auto;
   padding: 10px 12px;
   border-radius: var(--r-inner);
   background: var(--surface-2);
@@ -266,7 +319,7 @@ input:focus, select:focus {
 .set-chip-current { background: var(--accent); }
 .set-chip-label   { font-size: 11px; font-weight: 600; color: var(--text-dim); }
 .set-chip-value   { font-size: 18px; font-weight: 700; }
-.set-chip-done .set-chip-label   { color: var(--pass); }
+.set-chip-done .set-chip-label   { color: var(--pass-ink); }
 .set-chip-current .set-chip-label { color: var(--accent-ink); opacity: 0.6; }
 
 /* ─── List rows ─── */
@@ -344,4 +397,54 @@ input:focus, select:focus {
 @media (min-width: 600px) {
   body { background: var(--bg-tint); }
   .app-shell { box-shadow: 0 0 80px rgba(0,0,0,0.08); }
+}
+
+/* ─── Chart container ─── */
+.chart-wrap { position: relative; height: 220px; margin-top: 8px; }
+
+/* ─── Camera frame ─── */
+.card-dark-body { padding: 16px 20px 20px; }
+
+.camera-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+}
+
+.camera-frame canvas { width: 100%; height: 100%; display: block; }
+.camera-frame video  { display: none; }
+
+.camera-overlay {
+  position: absolute;
+  left: 20px;
+  bottom: 16px;
+}
+
+.camera-scrim {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--text-on-dark);
+}
+
+/* ─── Motion & accessibility ─── */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .btn:active { transform: none; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
