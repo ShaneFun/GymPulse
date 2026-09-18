@@ -99,10 +99,13 @@ def advance_schedule(schedule_id: str):
         next_week = current["week"] + 1
 
         # Idempotent: if next week already exists for this program, return it.
+        # select("*") is required: the whole row is carried forward into the
+        # insert below, and the test fake does not catch a missing column.
         existing = (
             supabase.table("schedules").select("*")
             .eq("program_id", current["program_id"])
             .eq("week", next_week)
+            .eq("exercise_name", current["exercise_name"])
             .execute()
         )
         if len(existing.data) > 0:
