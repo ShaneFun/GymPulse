@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,8 +31,8 @@ class ScheduleCreate(BaseModel):
     target_sets: int
     target_reps: int
     notes: str | None = None
-    weight_increment: float = 0
-    rep_increment: int = 0
+    weight_increment: float = Field(default=0, ge=0)
+    rep_increment: int = Field(default=0, ge=0)
 
 class WorkoutLogCreate(BaseModel):
     schedule_id: str     
