@@ -69,7 +69,11 @@ function App() {
           )
         )
       );
-      setPlans(allSchedules.flat());
+      setPlans(
+        allSchedules.flat().sort(
+          (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
+        )
+      );
     } catch (err) {
       console.error('loadPlans:', err);
     }
@@ -298,7 +302,7 @@ function App() {
                         <option value="">-- Choose a plan --</option>
                         {plans.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.programName} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
+                            {p.programName} · Week {p.week} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
                           </option>
                         ))}
                       </select>
@@ -587,9 +591,11 @@ function App() {
                 {plans.map(p => (
                   <div key={p.id} className="log-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{p.programName}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        {p.programName} · Week {p.week}
+                      </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${p.target_weight}kg` : ''}
+                        {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
                       </div>
                     </div>
                     <button
