@@ -10,7 +10,22 @@
 
 **Reference spec:** `docs/superpowers/specs/2026-09-18-auto-week-progression-design.md`
 
-**Command note:** All commands below use the Bash tool's forward-slash form and are run from the repo root (`C:/Users/siangyou/Desktop/AI fitness Analyze`). In PowerShell, use `venv\Scripts\python.exe` instead of `./venv/Scripts/python.exe`.
+**Command note:** Work happens in the worktree at `C:/Users/siangyou/Desktop/AI fitness Analyze/.worktrees/auto-week-progression`. All commands below use the Bash tool's forward-slash form and are run from the worktree root unless stated otherwise.
+
+The venv is gitignored and therefore only exists in the main checkout, so backend commands use it by relative path from the worktree root:
+
+```
+../../venv/Scripts/python.exe
+```
+
+**Lint baseline (IMPORTANT):** `npm run lint` does **not** pass cleanly on `main`. It reports **10 errors and 1 warning that are all pre-existing**, in code this plan does not touch:
+
+- `AICameraCounter.jsx`: unused `React` (1:8), unused `onClose` (94:42), setState-in-effect (122:5, 130:7), use-before-declare (134:34, 137:9), exhaustive-deps warning (141:6)
+- `App.jsx`: unused `React` (1:8), unused `useCallback` (1:38), use-before-declare (47:5, 48:5)
+
+**Do not fix these — they are out of scope for this plan.** The success criterion for every lint step below is: still exactly **10 errors, 1 warning**, with no new entries pointing at lines this plan changed. If the count goes up, the new code introduced a lint error and must be fixed.
+
+One trap to avoid in particular: this eslint config errors on `const` arrow functions referenced before their declaration (that's what App.jsx:47-48 are). Any new helper must be declared **above** its first use.
 
 ---
 
@@ -57,7 +72,7 @@ No tests exist yet and pytest is not installed. This task creates the harness an
 
 - [ ] **Step 1: Install pytest into the venv**
 
-Run: `./venv/Scripts/python.exe -m pip install pytest`
+Run: `../../venv/Scripts/python.exe -m pip install pytest`
 
 Expected: `Successfully installed pytest-<version>` (plus its dependencies: iniconfig, pluggy, packaging).
 
@@ -179,7 +194,7 @@ def test_home_returns_running_message(client):
 
 - [ ] **Step 5: Run the smoke test**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests -v`
 
 Expected: PASS — `test_home_returns_running_message PASSED`, `1 passed`.
 
@@ -239,7 +254,7 @@ def test_create_schedule_defaults_increments_to_zero(client, fake_db):
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests/test_schedules.py -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests/test_schedules.py -v`
 
 Expected: FAIL — both tests raise `KeyError: 'weight_increment'`, because `create_schedule` does not store the field yet.
 
@@ -279,7 +294,7 @@ In `backend/app/main.py`, in `create_schedule`, replace the insert payload:
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests -v`
 
 Expected: PASS — `3 passed`.
 
@@ -396,7 +411,7 @@ def test_advance_404_when_schedule_missing(client, fake_db):
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests/test_advance.py -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests/test_advance.py -v`
 
 Expected: FAIL — all five tests return 404/405 from FastAPI because the route does not exist yet.
 
@@ -459,7 +474,7 @@ def advance_schedule(schedule_id: str):
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests -v`
 
 Expected: PASS — `8 passed`.
 
@@ -492,7 +507,7 @@ In `frontend/src/api/client.js`, replace the Schedules section:
 
 Run: `cd frontend && npm run lint`
 
-Expected: no errors reported for `src/api/client.js`.
+Expected: lint still reports exactly the 10 pre-existing errors and 1 warning — no new entry for `src/api/client.js`.
 
 - [ ] **Step 3: Commit**
 
@@ -572,7 +587,7 @@ In the Plan tab JSX, insert this block immediately after the Sets/Reps/Weight ro
 
 Run: `cd frontend && npm run lint && npm run build`
 
-Expected: lint clean, `✓ built in <time>`.
+Expected: lint still reports exactly the 10 pre-existing errors and 1 warning (no new entries), and `✓ built in <time>`.
 
 - [ ] **Step 6: Commit**
 
@@ -600,7 +615,9 @@ In `frontend/src/App.jsx`, in the `// ── Counter Tab ──` state block, ad
 
 - [ ] **Step 2: Extract a shared session reset helper**
 
-Replace the existing `cancelSession` function with a `resetSession` helper plus a `cancelSession` that delegates to it (both `finishWorkout` and the progression handlers reuse this):
+`finishWorkout`, `confirmProgression`, `skipProgression`, and `cancelSession` all reset the session, so extract one helper.
+
+**Placement matters:** `resetSession` must be declared **above** `finishWorkout`, because this eslint config errors on a `const` arrow function referenced before its declaration. Insert `resetSession` immediately **before** the existing `startSession` function (in the `// ── Workout Session ──` block), so it sits above every caller:
 
 ```jsx
   const resetSession = () => {
@@ -611,6 +628,12 @@ Replace the existing `cancelSession` function with a `resetSession` helper plus 
     setProgression(null);
   };
 
+  const startSession = () => {
+```
+
+Then replace the existing `cancelSession` function (which currently sits at the end of the session block) so it delegates:
+
+```jsx
   const cancelSession = () => {
     resetSession();
   };
@@ -727,7 +750,7 @@ In the `sessionState === 'done'` block, replace the final `<div style={{ display
 
 Run: `cd frontend && npm run lint && npm run build`
 
-Expected: lint clean, `✓ built in <time>`.
+Expected: lint still reports exactly the 10 pre-existing errors and 1 warning (no new entries), and `✓ built in <time>`.
 
 - [ ] **Step 6: Commit**
 
@@ -774,7 +797,7 @@ In the Plan tab's `plans.map`, replace the plan name and detail lines:
 
 Run: `cd frontend && npm run lint && npm run build`
 
-Expected: lint clean, `✓ built in <time>`.
+Expected: lint still reports exactly the 10 pre-existing errors and 1 warning (no new entries), and `✓ built in <time>`.
 
 - [ ] **Step 4: Commit**
 
@@ -792,7 +815,7 @@ git commit -m "feat: label plans with their week number"
 
 - [ ] **Step 1: Start the backend**
 
-Run: `./venv/Scripts/python.exe backend/app/main.py`
+Run: `../../venv/Scripts/python.exe backend/app/main.py`
 
 Expected: `Uvicorn running on http://127.0.0.1:8000`.
 
@@ -856,7 +879,7 @@ In `README.md`, replace the "Automated Analytics & Progression" bullet:
 
 - [ ] **Step 2: Run the full backend test suite one more time**
 
-Run: `./venv/Scripts/python.exe -m pytest backend/tests -v`
+Run: `../../venv/Scripts/python.exe -m pytest backend/tests -v`
 
 Expected: PASS — `8 passed`.
 
