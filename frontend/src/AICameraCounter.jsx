@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Exercise configurations ported from Good-GYM's exercises.json
 // MediaPipe landmark indices:
@@ -85,13 +85,12 @@ export { EXERCISE_CONFIGS };
 
 /**
  * Props:
- *  onApplyCount(reps)  — called when user presses "Use Count" (optional)
  *  onRepUpdate(reps)   — called live on every new rep (optional)
  *  resetKey            — increment this number to reset counter to 0
  *  autoStart           — start camera immediately on mount (default false)
  *  exerciseLocked      — exercise key string; if set, hides the dropdown
  */
-function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null }) {
+function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [exercise, setExercise] = useState(exerciseLocked || 'bicep_curl');
@@ -360,15 +359,6 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
         <button onClick={resetCount} style={{ background: '#374151', color: '#fff', border: 'none', padding: '11px 14px', borderRadius: '8px', cursor: 'pointer' }}>
           ↺
         </button>
-        {onApplyCount && (
-          <button
-            onClick={() => { stopCamera(); onApplyCount(repCount); }}
-            disabled={repCount === 0}
-            style={{ flex: 1, background: '#4f46e5', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}
-          >
-            Use Count
-          </button>
-        )}
       </div>
     </div>
   );

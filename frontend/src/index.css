@@ -1,31 +1,31 @@
 :root {
-  --bg-primary: #0f0f1a;
-  --bg-secondary: #1a1a2e;
-  --bg-card: rgba(255, 255, 255, 0.05);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
+  /* ─── Colour ─── */
+  --bg:           #F2F0ED;
+  --bg-tint:      #EDE9E4;
+  --surface:      #FFFFFF;
+  --surface-2:    #F7F5F2;
+  --surface-dark: #111113;
 
-  --accent-primary: #6366f1;
-  --accent-secondary: #818cf8;
-  --success: #10b981;
-  --danger: #ef4444;
+  --text:         #0A0A0A;
+  --text-dim:     #8E8E93;
+  --text-on-dark: #FAFAFA;
 
-  --border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  --radius: 14px;
+  --accent:       #D4F034;
+  --accent-ink:   #0A0A0A;
+
+  --pass:         #22C55E;
+  --fail:         #EF4444;
+
+  --hairline:     rgba(0, 0, 0, 0.08);
+  --shadow-sm:    0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md:    0 4px 16px rgba(0, 0, 0, 0.05);
+
+  /* ─── Shape ─── */
+  --r-card:  24px;
+  --r-inner: 16px;
+  --r-pill:  999px;
+
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg-primary: #f0f2f5;
-    --bg-secondary: #ffffff;
-    --bg-card: rgba(255, 255, 255, 0.85);
-    --text-primary: #1a1a2e;
-    --text-secondary: #4a5568;
-    --border: rgba(0, 0, 0, 0.06);
-    --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  }
 }
 
 * {
@@ -42,12 +42,21 @@ html, body {
 
 body {
   font-family: var(--font-sans);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  line-height: 1.6;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Every number in the app must not jitter as digits change width. */
+.tnum,
+.rep-counter,
+.stat-tile-value,
+.set-chip-value {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Mobile-First App Shell ─── */

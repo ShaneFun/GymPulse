@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { fitnessApi } from './api/client';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement,
-  LineElement, BarElement, Title, Tooltip, Legend,
+  LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import AICameraCounter, { EXERCISE_CONFIGS } from './AICameraCounter';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const EXERCISE_OPTIONS = Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => ({
