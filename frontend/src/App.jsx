@@ -121,8 +121,8 @@ function App() {
         target_weight: parseFloat(planWeight) || 0,
         target_sets: parseInt(planSets),
         target_reps: parseInt(planReps),
-        weight_increment: parseFloat(planWeightInc) || 0,
-        rep_increment: parseInt(planRepInc) || 0,
+        weight_increment: Math.max(0, Number(planWeightInc) || 0),
+        rep_increment: Math.max(0, Math.round(Number(planRepInc) || 0)),
       });
 
       setPlanName('');
@@ -488,7 +488,7 @@ function App() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <label>Reps / Set</label>
-                      <input type="number" min="0" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
+                      <input type="number" min="0" step="1" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
                     </div>
                   </div>
                 </div>
