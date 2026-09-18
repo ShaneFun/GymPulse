@@ -114,7 +114,8 @@ def advance_schedule(schedule_id: str):
                 "data": existing.data[0]
             }
 
-        # Rows created before the increment columns existed read back as None.
+        # Defensive: the migration backfills existing rows to 0, so None only
+        # shows up if this runs against a database where it hasn't been applied.
         weight_increment = current.get("weight_increment") or 0
         rep_increment = current.get("rep_increment") or 0
 

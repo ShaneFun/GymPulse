@@ -71,7 +71,7 @@ def test_advance_applies_only_the_nonzero_increment(client, fake_db):
 
 
 def test_advance_treats_missing_increments_as_zero(client, fake_db):
-    """Rows created before the increment columns existed read back as None."""
+    """Increments read as None when the migration hasn't been applied yet."""
     fake_db.seed("schedules", [{
         "id": "sched-1", "program_id": "prog-1", "week": 3,
         "exercise_name": "situp", "target_weight": 0,
