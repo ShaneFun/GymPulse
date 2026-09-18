@@ -44,6 +44,15 @@ Open the project's Supabase dashboard → SQL Editor → New query, paste and ru
 alter table schedules
   add column if not exists weight_increment double precision not null default 0,
   add column if not exists rep_increment integer not null default 0;
+
+-- These columns mean "how much to RAISE next week's target", so a negative
+-- value would silently make a program regress week over week. The API rejects
+-- negatives on creation, but /schedules/{id}/advance reads these straight from
+-- the database — so rows written through the Supabase dashboard or any other
+-- client need the invariant enforced here, at the source.
+alter table schedules
+  add constraint schedules_weight_increment_non_negative check (weight_increment >= 0),
+  add constraint schedules_rep_increment_non_negative check (rep_increment >= 0);
 ```
 
 - [ ] **Step 2: Verify the columns exist**
@@ -603,6 +612,16 @@ git commit -m "feat: add progression increment inputs to plan form"
 **Files:**
 - Modify: `frontend/src/App.jsx:32-40` (counter state), `frontend/src/App.jsx:160-183` (`finishWorkout`, `cancelSession`), `frontend/src/App.jsx:416-430` (Done screen buttons)
 
+- [ ] **Step 1a: Add a weight formatting helper**
+
+Targets accumulate by repeated float addition (`20.0 + 2.5 + 2.5 + …`). Increments like 2.5 or 0.5 are binary-exact so they never drift, but a user-entered increment like `1.1` will eventually render as `22.200000000000003`. Add this module-level helper in `frontend/src/App.jsx`, immediately after the `EXERCISE_OPTIONS` constant near the top of the file:
+
+```jsx
+// Targets accumulate by repeated float addition, so trim display noise
+// (e.g. 22.200000000000003) without showing a pointless ".0" on whole numbers.
+const formatWeight = (kg) => Number(kg.toFixed(2)).toString();
+```
+
 - [ ] **Step 1: Add the progression state**
 
 In `frontend/src/App.jsx`, in the `// ── Counter Tab ──` state block, add after `autoCamera`:
@@ -611,6 +630,7 @@ In `frontend/src/App.jsx`, in the `// ── Counter Tab ──` state block, ad
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
   // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
   const [progression, setProgression] = useState(null);
+  const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
 ```
 
 - [ ] **Step 2: Extract a shared session reset helper**
@@ -677,6 +697,11 @@ Replace the whole `finishWorkout` function:
   };
 
   const confirmProgression = async () => {
+    // Guard against a double tap: the backend's existence check and its insert
+    // are two separate round trips, so two in-flight calls can both decide to
+    // create week+1 and produce a duplicate the app has no way to delete.
+    if (advancing) return;
+    setAdvancing(true);
     try {
       await fitnessApi.advanceSchedule(selectedPlan.id);
       await loadPlans();
@@ -684,6 +709,8 @@ Replace the whole `finishWorkout` function:
       setActiveTab('progress');
     } catch (err) {
       alert('Error creating next week: ' + err.message);
+    } finally {
+      setAdvancing(false);
     }
   };
 
@@ -708,12 +735,17 @@ In the `sessionState === 'done'` block, replace the final `<div style={{ display
                       ⬆ You passed! Ready for Week {progression.nextWeek}?
                     </div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-                      Next target: {progression.nextWeight > 0 ? `${progression.nextWeight}kg × ` : ''}
+                      Next target: {progression.nextWeight > 0 ? `${formatWeight(progression.nextWeight)}kg × ` : ''}
                       {progression.nextReps} reps × {selectedPlan.target_sets} sets
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-success" onClick={confirmProgression} style={{ flex: 2 }}>
-                        Create Week {progression.nextWeek}
+                      <button
+                        className="btn btn-success"
+                        onClick={confirmProgression}
+                        disabled={advancing}
+                        style={{ flex: 2 }}
+                      >
+                        {advancing ? 'Creating…' : `Create Week ${progression.nextWeek}`}
                       </button>
                       <button
                         onClick={skipProgression}
