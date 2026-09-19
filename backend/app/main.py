@@ -83,9 +83,9 @@ def home ():
     }
 
 @app.post("/programs")
-def create_program(program: ProgramCreate, db: Client = Depends(get_supabase)):
+def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), user_id: str = Depends(get_user_id)):
     try:
-        response = db.table("programs").insert({"name":program.name}).execute()
+        response = db.table("programs").insert({"name": program.name, "user_id": user_id}).execute()
 
         if len(response.data) == 0:
             raise HTTPException(status_code=400, detail="failed to write to database.")
