@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy } from 'lucide-react';
+import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy, ClipboardList } from 'lucide-react';
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
+import ExerciseFigure from '../components/ExerciseFigure';
 import { formatWeight } from '../lib/format';
 import { say, primeAudio } from '../lib/beep';
 
@@ -63,49 +64,53 @@ function WorkoutTab({
 
       {/* IDLE — Plan selector */}
       {sessionState === 'idle' && (
-        <div className="card">
+        <div>
           {plans.length === 0 ? (
             <div className="empty">
+              <ClipboardList size={32} strokeWidth={1.5} />
               <p>No plans yet. Go to the Plan tab to create one.</p>
             </div>
           ) : (
             <>
-              <div className="input-group">
-                <label className="label">Select Plan</label>
-                <select
-                  value={selectedPlan?.id || ''}
-                  onChange={(e) => {
-                    const p = plans.find(x => x.id === parseInt(e.target.value) || x.id === e.target.value);
-                    setSelectedPlan(p || null);
-                  }}
-                >
-                  <option value="">-- Choose a plan --</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.programName} · Week {p.week} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
-                    </option>
-                  ))}
-                </select>
+              <div className="plan-grid">
+                {plans.map((p) => {
+                  const selected = selectedPlan?.id === p.id;
+                  // A list, because a plan will be able to hold several
+                  // exercises later; today it is always exactly one.
+                  const exercises = [p.exercise_name];
+                  return (
+                    <button
+                      type="button"
+                      key={p.id}
+                      className={`plan-card ${selected ? 'selected' : ''}`}
+                      onClick={() => setSelectedPlan(p)}
+                      aria-pressed={selected}
+                    >
+                      <div className="plan-card-figures">
+                        {exercises.map((name) => (
+                          <ExerciseFigure
+                            key={name}
+                            exercise={name}
+                            label={EXERCISE_CONFIGS[name]?.label || name}
+                            size={56}
+                          />
+                        ))}
+                      </div>
+                      <div className="plan-card-name">{p.programName}</div>
+                      <div className="plan-card-meta">Week {p.week}</div>
+                      <div className="plan-card-target tnum">
+                        {p.target_sets}×{p.target_reps}
+                        {p.target_weight > 0 ? ` · ${formatWeight(p.target_weight)}kg` : ''}
+                      </div>
+                      {selected && (
+                        <span className="plan-card-check" aria-hidden="true">
+                          <Check size={14} strokeWidth={2} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-
-              {selectedPlan && (
-                <div className="input-group">
-                  <div className="card-row">
-                    <span className="dim">Exercise</span>
-                    <strong>{EXERCISE_CONFIGS[selectedPlan.exercise_name]?.label || selectedPlan.exercise_name}</strong>
-                  </div>
-                  <div className="card-row">
-                    <span className="dim">Target</span>
-                    <strong>{selectedPlan.target_sets} sets × {selectedPlan.target_reps} reps</strong>
-                  </div>
-                  {selectedPlan.target_weight > 0 && (
-                    <div className="card-row">
-                      <span className="dim">Weight</span>
-                      <strong>{selectedPlan.target_weight} kg</strong>
-                    </div>
-                  )}
-                </div>
-              )}
 
               <button
                 className="btn btn-accent btn-block"

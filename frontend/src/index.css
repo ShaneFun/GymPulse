@@ -797,3 +797,65 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   font-size: 34vh;
   color: rgba(212, 240, 52, 0.55);
 }
+
+/* ─── Plan cards (Workout tab) ─── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 18px 12px 14px;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-md);
+  font-family: inherit;
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.plan-card:active   { transform: scale(0.98); }
+.plan-card.selected { border-color: var(--accent); }
+
+/* A row, so several figures sit side by side once a plan can hold more
+   than one exercise. */
+.plan-card-figures {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.plan-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.plan-card-meta   { font-size: 12px; color: var(--text-dim); }
+.plan-card-target { font-size: 13px; font-weight: 600; }
+
+.plan-card-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
