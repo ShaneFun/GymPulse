@@ -366,6 +366,15 @@ function WorkoutTab({
               </div>
             </div>
           )}
+
+          {/* Nothing left to decide, but the per-exercise rows (a NOT SAVED
+              badge among them, maybe) are still worth reading before moving
+              on — no auto-navigate here, so give an explicit way out. */}
+          {results.length > 0 && advancable.length === 0 && (
+            <button className="btn btn-secondary btn-block" onClick={skipProgression}>
+              Done
+            </button>
+          )}
         </>
       )}
 

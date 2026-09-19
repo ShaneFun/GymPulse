@@ -320,11 +320,14 @@ function App() {
 
     // Offer progression only for exercises that passed AND have something to
     // progress by; an exercise that failed stays on its current week.
+    const anyFailed = outcomes.some(o => !o.logged);
     const advancable = outcomes.filter(o =>
       o.logged && o.passed &&
       ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
 
-    if (advancable.length === 0) {
+    // Only leave automatically when there is nothing for the user to see or
+    // decide. A failed log has to stay on screen, or it reads as a success.
+    if (advancable.length === 0 && !anyFailed) {
       resetSession();
       setActiveTab('progress');
     }
