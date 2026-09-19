@@ -55,8 +55,8 @@ function App() {
   const [getReadyRemaining, setGetReadyRemaining] = useState(0);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
-  // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
-  const [progression, setProgression] = useState(null);
+  // Per-exercise outcomes from finishWorkout: [{ exercise, reps, passed, logged }]
+  const [results, setResults] = useState([]);
   const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
 
   // Derived above their first use (this eslint config errors on
@@ -192,7 +192,7 @@ function App() {
     setCompletedByExercise([]);
     setCurrentSet(1);
     setLiveReps(0);
-    setProgression(null);
+    setResults([]);
   };
 
   const onStartPlan = (p) => {
@@ -288,34 +288,45 @@ function App() {
   }, [sessionState, getReadyRemaining]);
 
   const finishWorkout = async () => {
-    try {
-      const res = await fitnessApi.logWorkout({
-        schedule_id: selectedPlan.id,
-        log_name: `Session ${new Date().toLocaleDateString()}`,
-        actual_weight: selectedPlan.target_weight,
-        actual_reps: completedSets,
-      });
+    const stamp = new Date().toLocaleDateString();
+    const outcomes = [];
 
-      await loadHistory();
+    for (let i = 0; i < selectedPlan.exercises.length; i++) {
+      const exercise = selectedPlan.exercises[i];
+      const reps = completedByExercise[i] ?? [];
+      if (reps.length === 0) continue; // never started; nothing to record
 
-      const passed = res.data?.status_calculated === 'PASS';
-      const weightInc = selectedPlan.weight_increment || 0;
-      const repInc = selectedPlan.rep_increment || 0;
-
-      // On a PASS with something to progress by, stay here and ask first.
-      if (passed && (weightInc > 0 || repInc > 0)) {
-        setProgression({
-          nextWeek: (selectedPlan.week || 1) + 1,
-          nextWeight: selectedPlan.target_weight + weightInc,
-          nextReps: selectedPlan.target_reps + repInc,
+      try {
+        const res = await fitnessApi.logWorkout({
+          schedule_id: exercise.id,
+          log_name: `Session ${stamp}`,
+          actual_weight: exercise.target_weight,
+          actual_reps: reps,
         });
-        return;
+        outcomes.push({
+          exercise,
+          reps,
+          logged: true,
+          passed: res.data?.status_calculated === 'PASS',
+        });
+      } catch (err) {
+        console.error('logWorkout:', exercise.exercise_name, err);
+        outcomes.push({ exercise, reps, logged: false, passed: false });
       }
+    }
 
+    await loadHistory();
+    setResults(outcomes);
+
+    // Offer progression only for exercises that passed AND have something to
+    // progress by; an exercise that failed stays on its current week.
+    const advancable = outcomes.filter(o =>
+      o.logged && o.passed &&
+      ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
+
+    if (advancable.length === 0) {
       resetSession();
       setActiveTab('progress');
-    } catch (err) {
-      alert('Error saving workout: ' + err.message);
     }
   };
 
@@ -326,7 +337,15 @@ function App() {
     if (advancing) return;
     setAdvancing(true);
     try {
-      await fitnessApi.advanceSchedule(selectedPlan.id);
+      const advancable = results.filter(o =>
+        o.logged && o.passed &&
+        ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
+
+      // Sequential, and /advance is idempotent, so a partial failure can be
+      // retried without duplicating the rows that already landed.
+      for (const o of advancable) {
+        await fitnessApi.advanceSchedule(o.exercise.id);
+      }
       await loadPlans();
       resetSession();
       setActiveTab('progress');
@@ -408,7 +427,7 @@ function App() {
             cameraResetKey={cameraResetKey}
             autoCamera={autoCamera}
             setAutoCamera={setAutoCamera}
-            progression={progression}
+            results={results}
             advancing={advancing}
             startSession={startSession}
             doneSet={doneSet}

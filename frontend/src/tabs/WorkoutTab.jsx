@@ -23,7 +23,7 @@ const formatClock = (totalSeconds) => {
 
 function WorkoutTab({
   plans, selectedPlan, setSelectedPlan, sessionState, currentSet, currentExercise, completedSets,
-  liveReps, setLiveReps, cameraResetKey, autoCamera, progression,
+  liveReps, setLiveReps, cameraResetKey, autoCamera, results,
   advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
   cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
 }) {
@@ -43,6 +43,13 @@ function WorkoutTab({
   // Only worth naming the exercise on screen when there is more than one to
   // tell apart.
   const showExerciseLabel = (selectedPlan?.exercises?.length ?? 0) > 1;
+
+  // Exercises the Done screen can offer to progress: logged, passed, and with
+  // something to actually change next week. An exercise that failed stays on
+  // its current week even when its siblings advance.
+  const advancable = results.filter(o =>
+    o.logged && o.passed &&
+    ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
 
   // One beep per value, not per render: without this guard any re-render while
   // sitting on the same rep would retrigger the tone.
@@ -295,47 +302,31 @@ function WorkoutTab({
             <p className="section-heading">
               <Trophy size={18} strokeWidth={1.5} /> Workout Complete!
             </p>
-            <div className="card-row">
-              <span className="dim">Sets completed</span>
-              <strong>{completedSets.length} / {selectedPlan.target_sets}</strong>
-            </div>
-            <div className="card-row">
-              <span className="dim">Total reps</span>
-              <strong>{completedSets.reduce((a, b) => a + b, 0)}</strong>
-            </div>
+            {results.length === 0 && (
+              <p className="dim">Save to log every exercise and check your progress.</p>
+            )}
           </div>
 
-          <div className="set-chips">
-            {completedSets.map((reps, i) => (
-              <div key={i} className="set-chip set-chip-done">
-                <div className="set-chip-label">Set {i + 1}</div>
-                <div className="set-chip-value">{reps}</div>
+          {results.length > 0 && results.map((o) => {
+            const label = EXERCISE_CONFIGS[o.exercise.exercise_name]?.label || o.exercise.exercise_name;
+            return (
+              <div key={o.exercise.id} className="row">
+                <div className="avatar-row">
+                  <ExerciseFigure exercise={o.exercise.exercise_name} label={label} size={40} />
+                  <div>
+                    <div className="row-title">{label}</div>
+                    <div className="row-sub tnum">{o.reps.join(' · ')}</div>
+                    {!o.logged && <div className="dim row-sub">Could not be saved</div>}
+                  </div>
+                </div>
+                <span className={`badge ${o.logged && o.passed ? 'badge-pass' : 'badge-fail'}`}>
+                  {o.logged ? (o.passed ? 'PASS' : 'FAIL') : 'NOT SAVED'}
+                </span>
               </div>
-            ))}
-          </div>
+            );
+          })}
 
-          {progression ? (
-            <div className="card">
-              <p className="section-heading">Ready for Week {progression.nextWeek}?</p>
-              <p className="dim">
-                Next target: {progression.nextWeight > 0 ? `${formatWeight(progression.nextWeight)}kg × ` : ''}
-                {progression.nextReps} reps × {selectedPlan.target_sets} sets
-              </p>
-              <div className="btn-row">
-                <button
-                  className="btn btn-accent"
-                  onClick={confirmProgression}
-                  disabled={advancing}
-                >
-                  <ArrowUp size={18} strokeWidth={1.5} />
-                  {advancing ? 'Creating…' : `Create Week ${progression.nextWeek}`}
-                </button>
-                <button className="btn btn-secondary" onClick={skipProgression}>
-                  Skip
-                </button>
-              </div>
-            </div>
-          ) : (
+          {results.length === 0 && (
             <div className="btn-row">
               <button className="btn btn-accent" onClick={finishWorkout}>
                 <Save size={18} strokeWidth={1.5} />
@@ -344,6 +335,35 @@ function WorkoutTab({
               <button className="btn btn-secondary" onClick={cancelSession}>
                 Discard
               </button>
+            </div>
+          )}
+
+          {advancable.length > 0 && (
+            <div className="card">
+              <p className="section-heading">Ready to progress?</p>
+              {advancable.map((o) => {
+                const label = EXERCISE_CONFIGS[o.exercise.exercise_name]?.label || o.exercise.exercise_name;
+                const nextWeight = o.exercise.target_weight + (o.exercise.weight_increment || 0);
+                const nextReps = o.exercise.target_reps + (o.exercise.rep_increment || 0);
+                return (
+                  <p className="dim" key={o.exercise.id}>
+                    {label}: {nextWeight > 0 ? `${formatWeight(nextWeight)}kg × ` : ''}{nextReps} reps
+                  </p>
+                );
+              })}
+              <div className="btn-row">
+                <button
+                  className="btn btn-accent"
+                  onClick={confirmProgression}
+                  disabled={advancing}
+                >
+                  <ArrowUp size={18} strokeWidth={1.5} />
+                  {advancing ? 'Creating…' : 'Confirm'}
+                </button>
+                <button className="btn btn-secondary" onClick={skipProgression}>
+                  Skip
+                </button>
+              </div>
             </div>
           )}
         </>
