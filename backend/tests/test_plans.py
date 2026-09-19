@@ -62,6 +62,31 @@ def test_create_plan_rejects_an_empty_exercise_list(client, fake_db):
     assert fake_db.table("programs").rows == []
 
 
+def test_create_plan_defaults_exercise_rest_seconds_to_180(client, fake_db):
+    plan = {
+        "name": "No Rest Specified",
+        "exercises": PLAN["exercises"],
+    }
+
+    response = client.post("/plans", json=plan)
+
+    assert response.status_code == 200
+    assert response.json()["data"]["program"]["exercise_rest_seconds"] == 180
+
+
+def test_create_plan_rejects_a_negative_exercise_rest_seconds(client, fake_db):
+    plan = {
+        "name": "Negative Rest",
+        "exercise_rest_seconds": -1,
+        "exercises": PLAN["exercises"],
+    }
+
+    response = client.post("/plans", json=plan)
+
+    assert response.status_code == 422
+    assert fake_db.table("programs").rows == []
+
+
 def test_create_plan_removes_the_program_if_an_exercise_fails(client, fake_db, monkeypatch):
     """A half-built plan is worse than none: neither table may retain a row.
 

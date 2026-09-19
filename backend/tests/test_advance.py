@@ -156,6 +156,48 @@ def test_advance_carries_rest_seconds_forward(client, fake_db):
     assert created["rest_seconds"] == 120
 
 
+def test_advance_two_exercises_in_same_program_and_week_produces_two_week_two_rows(client, fake_db):
+    """The one behaviour the whole multi-exercise feature depends on from an
+    endpoint nobody modified: advancing each exercise in a plan must produce
+    its own week-2 row, not one shared row and not one overwriting the other.
+    """
+    fake_db.seed("schedules", [
+        {
+            "id": "sched-1", "program_id": "prog-1", "week": 1,
+            "exercise_name": "bicep_curl", "target_weight": 20.0,
+            "target_sets": 3, "target_reps": 10,
+            "weight_increment": 2.5, "rep_increment": 0,
+        },
+        {
+            "id": "sched-2", "program_id": "prog-1", "week": 1,
+            "exercise_name": "overhead_press", "target_weight": 30.0,
+            "target_sets": 4, "target_reps": 8,
+            "weight_increment": 0, "rep_increment": 1,
+        },
+    ])
+
+    first = client.post("/schedules/sched-1/advance")
+    second = client.post("/schedules/sched-2/advance")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_created = first.json()["data"]
+    second_created = second.json()["data"]
+
+    assert first_created["id"] != second_created["id"]
+    assert first_created["week"] == 2
+    assert second_created["week"] == 2
+    assert first_created["exercise_name"] == "bicep_curl"
+    assert second_created["exercise_name"] == "overhead_press"
+
+    week_2_rows = [
+        r for r in fake_db.table("schedules").rows
+        if r["program_id"] == "prog-1" and r["week"] == 2
+    ]
+    assert len(week_2_rows) == 2
+    assert {r["exercise_name"] for r in week_2_rows} == {"bicep_curl", "overhead_press"}
+
+
 def test_advance_defaults_rest_when_missing(client, fake_db):
     """Rows predating the rest_seconds column read back as None."""
     fake_db.seed("schedules", [{
