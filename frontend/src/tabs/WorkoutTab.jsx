@@ -22,7 +22,7 @@ const formatClock = (totalSeconds) => {
 };
 
 function WorkoutTab({
-  plans, selectedPlan, setSelectedPlan, sessionState, currentSet, completedSets,
+  plans, selectedPlan, setSelectedPlan, sessionState, currentSet, currentExercise, completedSets,
   liveReps, setLiveReps, cameraResetKey, autoCamera, progression,
   advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
   cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
@@ -31,10 +31,18 @@ function WorkoutTab({
 
   // Reps left in this set, or null when there is no active target. Drives both
   // the on-screen countdown and the beeps.
-  const repsRemaining = (sessionState === 'active' && selectedPlan)
-    ? selectedPlan.target_reps - liveReps
+  const repsRemaining = (sessionState === 'active' && currentExercise)
+    ? currentExercise.target_reps - liveReps
     : null;
   const showCountdown = repsRemaining !== null && repsRemaining > 0 && repsRemaining <= 3;
+
+  // Label for the exercise currently in play, e.g. "Bicep Curl".
+  const exerciseLabel = currentExercise
+    ? (EXERCISE_CONFIGS[currentExercise.exercise_name]?.label || currentExercise.exercise_name)
+    : null;
+  // Only worth naming the exercise on screen when there is more than one to
+  // tell apart.
+  const showExerciseLabel = (selectedPlan?.exercises?.length ?? 0) > 1;
 
   // One beep per value, not per render: without this guard any re-render while
   // sitting on the same rep would retrigger the tone.
@@ -42,14 +50,14 @@ function WorkoutTab({
   const lastCalledRepRef = useRef(0);
 
   useEffect(() => {
-    if (sessionState !== 'active' || !selectedPlan || liveReps <= 0) {
+    if (sessionState !== 'active' || !currentExercise || liveReps <= 0) {
       lastCalledRepRef.current = 0;
       return;
     }
     if (lastCalledRepRef.current === liveReps) return;
     lastCalledRepRef.current = liveReps;
 
-    const left = selectedPlan.target_reps - liveReps;
+    const left = currentExercise.target_reps - liveReps;
 
     // Every rep is called out, because you cannot read the screen mid-rep.
     // The tail switches from counting up to counting down, so the last
@@ -67,7 +75,7 @@ function WorkoutTab({
     } else {
       say(liveReps, { fallback: { frequency: 880, duration: 0.1 } });
     }
-  }, [liveReps, sessionState, selectedPlan]);
+  }, [liveReps, sessionState, currentExercise]);
 
 
   return (
@@ -142,11 +150,11 @@ function WorkoutTab({
       )}
 
       {/* ACTIVE — Workout in progress */}
-      {(sessionState === 'active' || sessionState === 'getready') && selectedPlan && (
+      {(sessionState === 'active' || sessionState === 'getready') && selectedPlan && currentExercise && (
         <>
           <div className="card-dark">
             <AICameraCounter
-              exerciseLocked={selectedPlan.exercise_name}
+              exerciseLocked={currentExercise.exercise_name}
               autoStart={autoCamera}
               resetKey={cameraResetKey}
               onRepUpdate={setLiveReps}
@@ -154,7 +162,9 @@ function WorkoutTab({
               overlay={
                 <>
                   <div className="camera-readout">
-                    <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
+                    <span className="camera-readout-set">
+                      {showExerciseLabel ? `${exerciseLabel} · Set ${currentSet} of ${currentExercise.target_sets}` : `Set ${currentSet} of ${currentExercise.target_sets}`}
+                    </span>
                     <span className="camera-readout-reps tnum">{liveReps}</span>
                   </div>
                   {sessionState === 'getready' && (
@@ -243,14 +253,14 @@ function WorkoutTab({
       )}
 
       {/* DONE — Workout complete */}
-      {sessionState === 'resting' && selectedPlan && (
+      {sessionState === 'resting' && selectedPlan && currentExercise && (
         <>
           <div className="rest-panel">
             <div className="rest-label">
               {restRemaining > 0 ? 'Rest' : 'Ready when you are'}
             </div>
             <div className="rest-clock tnum">{formatClock(restRemaining)}</div>
-            <div className="rest-next">Up next &middot; Set {currentSet} of {selectedPlan.target_sets}</div>
+            <div className="rest-next">Up next &middot; {exerciseLabel} &middot; Set {currentSet} of {currentExercise.target_sets}</div>
 
             <button type="button" className="btn btn-accent btn-block" onClick={beginGetReady}>
               <Play size={18} strokeWidth={1.5} />

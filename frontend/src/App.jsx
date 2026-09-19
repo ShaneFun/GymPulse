@@ -44,7 +44,9 @@ function App() {
   // sessionState: 'idle' | 'active' | 'done'
   const [sessionState, setSessionState] = useState('idle');
   const [currentSet, setCurrentSet] = useState(1);
-  const [completedSets, setCompletedSets] = useState([]); // array of rep counts
+  const [exerciseIndex, setExerciseIndex] = useState(0);
+  // One array of rep counts per exercise, parallel to selectedPlan.exercises.
+  const [completedByExercise, setCompletedByExercise] = useState([]);
   const [liveReps, setLiveReps] = useState(0);
   // Between sets: 'resting' counts the rest down then waits for a tap;
   // 'getready' is the short lead-in after that tap, during which the camera
@@ -56,6 +58,13 @@ function App() {
   // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
   const [progression, setProgression] = useState(null);
   const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
+
+  // Derived above their first use (this eslint config errors on
+  // use-before-declaration for const arrow functions that reference them).
+  const currentExercise = selectedPlan?.exercises?.[exerciseIndex] ?? null;
+  // The flat list becomes the current exercise's list, derived rather than
+  // kept as a second piece of state, so the two can never disagree.
+  const completedSets = completedByExercise[exerciseIndex] ?? [];
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
@@ -179,7 +188,8 @@ function App() {
     setSessionState('idle');
     setRestRemaining(0);
     setGetReadyRemaining(0);
-    setCompletedSets([]);
+    setExerciseIndex(0);
+    setCompletedByExercise([]);
     setCurrentSet(1);
     setLiveReps(0);
     setProgression(null);
@@ -197,27 +207,38 @@ function App() {
     // so unlock the context here or the countdown beeps never sound.
     primeAudio();
     setCurrentSet(1);
-    setCompletedSets([]);
+    setExerciseIndex(0);
+    setCompletedByExercise(selectedPlan.exercises.map(() => []));
     setLiveReps(0);
     setCameraResetKey(k => k + 1);
     setSessionState('active');
   };
 
   const doneSet = () => {
-    if (liveReps < 1) return; // Q3: require at least 1 rep
-    const newSets = [...completedSets, liveReps];
-    setCompletedSets(newSets);
+    if (liveReps < 1 || !currentExercise) return;
+
+    const forThisExercise = [...(completedByExercise[exerciseIndex] ?? []), liveReps];
+    const next = completedByExercise.map((v, i) => (i === exerciseIndex ? forThisExercise : v));
+    setCompletedByExercise(next);
     setLiveReps(0);
 
-    if (newSets.length >= selectedPlan.target_sets) {
-      // All sets done
-      setSessionState('done');
-    } else {
+    const moreSets = forThisExercise.length < currentExercise.target_sets;
+    const moreExercises = exerciseIndex < selectedPlan.exercises.length - 1;
+
+    if (moreSets) {
       setCurrentSet(s => s + 1);
-      setCameraResetKey(k => k + 1); // reset counter for next set
-      // Rest instead of leaving the camera live and counting.
-      setRestRemaining(selectedPlan.rest_seconds ?? 90);
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(currentExercise.rest_seconds ?? 90);
       setSessionState('resting');
+    } else if (moreExercises) {
+      // Longer gap between exercises: time to change station or weights.
+      setExerciseIndex(i => i + 1);
+      setCurrentSet(1);
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(selectedPlan.exerciseRestSeconds ?? 180);
+      setSessionState('resting');
+    } else {
+      setSessionState('done');
     }
   };
 
@@ -380,6 +401,7 @@ function App() {
             setSelectedPlan={setSelectedPlan}
             sessionState={sessionState}
             currentSet={currentSet}
+            currentExercise={currentExercise}
             completedSets={completedSets}
             liveReps={liveReps}
             setLiveReps={setLiveReps}
