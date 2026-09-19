@@ -1,6 +1,7 @@
 import os
+import jwt
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,9 +17,44 @@ app.add_middleware(
 from dotenv import load_dotenv
 load_dotenv()
 
-SUPABASE_URL=os.getenv("SUPABASE_URL", "https://klldkzitusmrtgyvhkit.supabase.co")
-SUPABASE_KEY=os.getenv("SUPABASE_KEY", "sb_publishable_YXzIRGJs1bJwMWmZ2N8CHg_C_-a6K_l")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "SUPABASE_URL and SUPABASE_KEY must be set. Copy .env.example to .env."
+    )
+
+
+def _bearer_token(authorization: str | None) -> str:
+    """Pulls the raw JWT out of an Authorization header, or 401s."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
+    return token
+
+
+def get_supabase(authorization: str | None = Header(default=None)) -> Client:
+    """A Supabase client carrying the caller's JWT, so RLS sees auth.uid()."""
+    token = _bearer_token(authorization)
+    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    client.postgrest.auth(token)
+    return client
+
+
+def get_user_id(authorization: str | None = Header(default=None)) -> str:
+    """The caller's user id, read from the JWT's `sub` claim."""
+    token = _bearer_token(authorization)
+    try:
+        payload = jwt.decode(token, options={"verify_signature": False})
+    except Exception:
+        raise HTTPException(status_code=401, detail="Malformed token.")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token has no subject.")
+    return user_id
 
 class ProgramCreate(BaseModel):
     name: str
@@ -47,9 +83,9 @@ def home ():
     }
 
 @app.post("/programs")
-def create_program(program: ProgramCreate):
+def create_program(program: ProgramCreate, db: Client = Depends(get_supabase)):
     try:
-        response = supabase.table("programs").insert({"name":program.name}).execute()
+        response = db.table("programs").insert({"name":program.name}).execute()
 
         if len(response.data) == 0:
             raise HTTPException(status_code=400, detail="failed to write to database.")
@@ -65,10 +101,10 @@ def create_program(program: ProgramCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/schedules")
-def create_schedule(schedule: ScheduleCreate):
+def create_schedule(schedule: ScheduleCreate, db: Client = Depends(get_supabase)):
     try:
 
-        response = supabase.table("schedules").insert({
+        response = db.table("schedules").insert({
             "program_id": schedule.program_id,
             "week": schedule.week,
             "exercise_name": schedule.exercise_name,
@@ -88,9 +124,9 @@ def create_schedule(schedule: ScheduleCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/schedules/{schedule_id}/advance")
-def advance_schedule(schedule_id: str):
+def advance_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
     try:
-        sched_res = supabase.table("schedules").select("*").eq("id", schedule_id).execute()
+        sched_res = db.table("schedules").select("*").eq("id", schedule_id).execute()
 
         if len(sched_res.data) == 0:
             raise HTTPException(status_code=404, detail="Schedule not found.")
@@ -102,7 +138,7 @@ def advance_schedule(schedule_id: str):
         # select("*") is required: the whole row is carried forward into the
         # insert below, and the test fake does not catch a missing column.
         existing = (
-            supabase.table("schedules").select("*")
+            db.table("schedules").select("*")
             .eq("program_id", current["program_id"])
             .eq("week", next_week)
             .eq("exercise_name", current["exercise_name"])
@@ -119,7 +155,7 @@ def advance_schedule(schedule_id: str):
         weight_increment = current.get("weight_increment") or 0
         rep_increment = current.get("rep_increment") or 0
 
-        response = supabase.table("schedules").insert({
+        response = db.table("schedules").insert({
             "program_id": current["program_id"],
             "week": next_week,
             "exercise_name": current["exercise_name"],
@@ -143,10 +179,10 @@ def advance_schedule(schedule_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/workout-logs")
-def create_workout_log(log: WorkoutLogCreate):
+def create_workout_log(log: WorkoutLogCreate, db: Client = Depends(get_supabase)):
     try:
-       
-        schedule_response = supabase.table("schedules").select("*").eq("id", log.schedule_id).execute()
+
+        schedule_response = db.table("schedules").select("*").eq("id", log.schedule_id).execute()
         
         if len(schedule_response.data) == 0:
             raise HTTPException(status_code=404, detail="Target schedule not found.")
@@ -167,7 +203,7 @@ def create_workout_log(log: WorkoutLogCreate):
 
         # Do not insert status and recommendation into Supabase because they are not in the schema.
         # They will be computed dynamically in the /analysis endpoint.
-        response = supabase.table("workout_logs").insert({
+        response = db.table("workout_logs").insert({
             "schedule_id": log.schedule_id,
             "log_name": log.log_name,
             "actual_weight": log.actual_weight,
@@ -188,9 +224,9 @@ def create_workout_log(log: WorkoutLogCreate):
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.get("/programs")
-def get_all_programs():
+def get_all_programs(db: Client = Depends(get_supabase)):
     try:
-        response = supabase.table("programs").select("*").execute()
+        response = db.table("programs").select("*").execute()
         return {"data": response.data}
     except HTTPException:
         raise
@@ -198,9 +234,9 @@ def get_all_programs():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/schedules")
-def get_schedules_by_program(program_id: str):
+def get_schedules_by_program(program_id: str, db: Client = Depends(get_supabase)):
     try:
-        response = supabase.table("schedules").select("*").eq("program_id", program_id).execute()
+        response = db.table("schedules").select("*").eq("program_id", program_id).execute()
         return {"data": response.data}
     except HTTPException:
         raise
@@ -208,9 +244,9 @@ def get_schedules_by_program(program_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/workout-logs")
-def get_logs_by_schedule(schedule_id: str):
+def get_logs_by_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
     try:
-        response = supabase.table("workout_logs").select("*").eq("schedule_id", schedule_id).execute()
+        response = db.table("workout_logs").select("*").eq("schedule_id", schedule_id).execute()
         return {"data": response.data}
     except HTTPException:
         raise
@@ -220,20 +256,20 @@ def get_logs_by_schedule(schedule_id: str):
 # ---- GET Routes (Retrieving Data) ----
 
 @app.get("/analysis/{schedule_id}")
-def get_workout_analysis(schedule_id: str):
+def get_workout_analysis(schedule_id: str, db: Client = Depends(get_supabase)):
     try:
         # Fetch the schedule to know the target requirements
-        sched_res = supabase.table("schedules").select("*").eq("id", schedule_id).execute()
+        sched_res = db.table("schedules").select("*").eq("id", schedule_id).execute()
         if len(sched_res.data) == 0:
             return {"schedule_id": schedule_id, "history": []}
-            
+
         target = sched_res.data[0]
         t_weight = target["target_weight"]
         t_sets = target["target_sets"]
         t_reps = target["target_reps"]
 
         # Fetch logs
-        response = supabase.table("workout_logs").select("id", "log_name", "actual_weight", "actual_reps", "created_at").eq("schedule_id", schedule_id).execute()
+        response = db.table("workout_logs").select("id", "log_name", "actual_weight", "actual_reps", "created_at").eq("schedule_id", schedule_id).execute()
         
         history = []
         for log in response.data:

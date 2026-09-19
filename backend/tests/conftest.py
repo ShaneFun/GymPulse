@@ -100,14 +100,26 @@ class FakeSupabase:
             table.rows.append(dict(row))
 
 
+TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
+
+
 @pytest.fixture
-def fake_db(monkeypatch):
-    """Replaces the module-level supabase client with an in-memory fake."""
-    db = FakeSupabase()
-    monkeypatch.setattr(main, "supabase", db)
-    return db
+def fake_db():
+    """In-memory stand-in, injected via FastAPI's dependency overrides."""
+    return FakeSupabase()
 
 
 @pytest.fixture
 def client(fake_db):
-    return TestClient(main.app)
+    main.app.dependency_overrides[main.get_supabase] = lambda: fake_db
+    main.app.dependency_overrides[main.get_user_id] = lambda: TEST_USER_ID
+    with TestClient(main.app) as c:
+        yield c
+    main.app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client():
+    """No dependency overrides: exercises the real auth dependency."""
+    with TestClient(main.app) as c:
+        yield c
