@@ -1,5 +1,8 @@
-import { Camera, LogIn } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Camera, LogOut } from 'lucide-react';
 import { formatWeight } from '../lib/format';
+import { fitnessApi } from '../api/client';
+import { useAuth } from '../auth/AuthProvider';
 
 const totalReps = (log) => (log.actual_reps || []).reduce((a, b) => a + b, 0);
 
@@ -41,9 +44,75 @@ const personalBests = (history) => {
   return Object.entries(best).sort((a, b) => b[1] - a[1]);
 };
 
+// Server fields as edited by the form; birth_year is kept as a string here
+// so an empty input can be distinguished from a real year.
+const fieldsFromProfile = (profile) => ({
+  displayName: profile?.display_name || '',
+  phone: profile?.phone || '',
+  birthYear: profile?.birth_year != null ? String(profile.birth_year) : '',
+});
+
 function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
+  const { user, signOut } = useAuth();
   const bests = personalBests(workoutHistory);
   const totalRepsSum = workoutHistory.reduce((a, log) => a + totalReps(log), 0);
+
+  const [profile, setProfile] = useState(null);
+  const [displayName, setDisplayName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fitnessApi.getProfile()
+      .then((res) => {
+        if (!active) return;
+        const data = res.data?.data || {};
+        setProfile(data);
+        const fields = fieldsFromProfile(data);
+        setDisplayName(fields.displayName);
+        setPhone(fields.phone);
+        setBirthYear(fields.birthYear);
+      })
+      .catch((err) => console.error('getProfile:', err))
+      .finally(() => { if (active) setProfileLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  const savedFields = fieldsFromProfile(profile);
+  const isDirty = profileLoaded && (
+    displayName !== savedFields.displayName ||
+    phone !== savedFields.phone ||
+    birthYear !== savedFields.birthYear
+  );
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    setSaveStatus('');
+    try {
+      const res = await fitnessApi.updateProfile({
+        display_name: displayName.trim() ? displayName.trim() : null,
+        phone: phone.trim() ? phone.trim() : null,
+        birth_year: birthYear.trim() ? parseInt(birthYear, 10) : null,
+      });
+      const data = res.data?.data || {};
+      setProfile(data);
+      const fields = fieldsFromProfile(data);
+      setDisplayName(fields.displayName);
+      setPhone(fields.phone);
+      setBirthYear(fields.birthYear);
+      setSaveStatus('Saved');
+      setTimeout(() => setSaveStatus(''), 2000);
+    } catch (err) {
+      console.error('updateProfile:', err);
+      setSaveStatus('Error saving');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -98,15 +167,64 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
       </div>
 
       <div className="section-heading">Account</div>
-      <div className="card">
-        <div className="card-row">
-          <div>
-            <div className="row-title">Sign in</div>
-            <div className="row-sub">Accounts are coming soon</div>
-          </div>
-          <LogIn size={20} strokeWidth={1.5} className="dim" />
+
+      <div className="row">
+        <div>
+          <div className="row-title">Email</div>
+          <div className="row-sub">{user.email}</div>
         </div>
       </div>
+      <p className="dim field-note">Your email can&rsquo;t be changed here.</p>
+
+      <div className="card">
+        <div className="input-group">
+          <label className="label" htmlFor="me-display-name">Display name</label>
+          <input
+            id="me-display-name"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Add a display name"
+          />
+        </div>
+
+        <div className="input-group">
+          <label className="label" htmlFor="me-phone">Phone</label>
+          <input
+            id="me-phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Add a phone number"
+          />
+        </div>
+
+        <div className="input-group">
+          <label className="label" htmlFor="me-birth-year">Birth year</label>
+          <input
+            id="me-birth-year"
+            type="number"
+            min="1900"
+            max="2100"
+            value={birthYear}
+            onChange={(e) => setBirthYear(e.target.value)}
+            placeholder="Add a birth year"
+          />
+        </div>
+
+        <button
+          className="btn btn-accent btn-block"
+          onClick={handleSaveProfile}
+          disabled={saving || !isDirty}
+        >
+          {saving ? 'Saving…' : (saveStatus || 'Save')}
+        </button>
+      </div>
+
+      <button className="btn btn-secondary btn-block" onClick={signOut}>
+        <LogOut size={18} strokeWidth={1.5} />
+        Sign out
+      </button>
     </div>
   );
 }

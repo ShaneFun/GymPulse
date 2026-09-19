@@ -120,6 +120,13 @@ body {
 
 .dim { color: var(--text-dim); }
 
+/* A small caption under a .row or field — e.g. a read-only hint or a
+   validation message. */
+.field-note {
+  margin: -4px 0 16px;
+  font-size: 13px;
+}
+
 /* ─── Cards ─── */
 .card {
   background: var(--surface);

@@ -38,4 +38,8 @@ export const fitnessApi = {
   // Feature 3 & 4: Logs & Analysis
   logWorkout: (logData) => apiClient.post('/workout-logs', logData),
   getAnalysis: (scheduleId) => apiClient.get(`/analysis/${scheduleId}`),
+
+  // Feature 5: Profile
+  getProfile: () => apiClient.get('/profile'),
+  updateProfile: (fields) => apiClient.put('/profile', fields),
 };
