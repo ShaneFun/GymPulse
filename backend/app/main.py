@@ -142,6 +142,24 @@ class ScheduleCreate(BaseModel):
     rep_increment: int = Field(default=0, ge=0)
     rest_seconds: int = Field(default=90, ge=0)
 
+class PlanExerciseCreate(BaseModel):
+    exercise_name: str
+    target_weight: float
+    target_sets: int
+    target_reps: int
+    rest_seconds: int = Field(default=90, ge=0)
+    weight_increment: float = Field(default=0, ge=0)
+    rep_increment: int = Field(default=0, ge=0)
+
+
+class PlanCreate(BaseModel):
+    name: str
+    exercise_rest_seconds: int = Field(default=180, ge=0)
+    # min_length=1: a plan with no exercises is not a plan, and rejecting it
+    # here is what makes the 422 in the tests a validation error rather than
+    # a half-built program.
+    exercises: list[PlanExerciseCreate] = Field(min_length=1)
+
 class ProfileUpdate(BaseModel):
     display_name: str | None = None
     phone: str | None = None
@@ -176,6 +194,62 @@ def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), u
     except HTTPException:
         raise
     except Exception as e:
+        raise _map_supabase_error(e)
+
+@app.post("/plans")
+def create_plan(
+    plan: PlanCreate,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    """Create a program and all of its week-1 exercises as one unit."""
+    program_id = None
+    try:
+        program_res = db.table("programs").insert({
+            "name": plan.name,
+            "user_id": user_id,
+            "exercise_rest_seconds": plan.exercise_rest_seconds
+        }).execute()
+
+        if len(program_res.data) == 0:
+            raise HTTPException(status_code=400, detail="Failed to create plan.")
+
+        program = program_res.data[0]
+        program_id = program["id"]
+
+        schedules = []
+        for exercise in plan.exercises:
+            row = db.table("schedules").insert({
+                "program_id": program_id,
+                "week": 1,
+                "exercise_name": exercise.exercise_name,
+                "target_weight": exercise.target_weight,
+                "target_sets": exercise.target_sets,
+                "target_reps": exercise.target_reps,
+                "rest_seconds": exercise.rest_seconds,
+                "weight_increment": exercise.weight_increment,
+                "rep_increment": exercise.rep_increment
+            }).execute()
+
+            if len(row.data) == 0:
+                raise HTTPException(status_code=400, detail="Failed to add an exercise.")
+            schedules.append(row.data[0])
+
+        return {
+            "message": "Plan created!",
+            "data": {"program": program, "schedules": schedules}
+        }
+    except Exception as e:
+        # Roll back by hand: a program with no exercises is invisible in the
+        # UI but real in the database, which is how the existing orphan row
+        # got there. Postgres cascades schedules on program delete.
+        if program_id is not None:
+            try:
+                db.table("programs").delete().eq("id", program_id).execute()
+            except Exception:
+                pass
+        if isinstance(e, HTTPException):
+            raise
         raise _map_supabase_error(e)
 
 @app.get("/profile")
