@@ -21,13 +21,26 @@ against it:
 - `FakeInsert` does not backfill unset columns: a row read back from the fake
   omits keys that a real query would return as NULL, because the fake has no
   schema to know those columns exist.
+- `FakeUpsert` only inserts-if-absent or returns the existing row as-is; it
+  does not merge new values into an existing row the way a real Postgres
+  upsert would. This is enough for main.py's current id-only upsert.
 """
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+# main.py raises at import time if SUPABASE_URL/SUPABASE_KEY are unset, and
+# .env (where real values live locally) is gitignored, so a clean clone or
+# CI checkout has neither. These tests never make a real network call --
+# every dependency that would use them (get_supabase, get_user_id) is
+# overridden below with a fake -- so dummy values are correct here.
+# setdefault() so a real .env, if present, still wins.
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_KEY", "test-dummy-key")
 
 # backend/app/main.py is a standalone module (no package), so put its
 # directory on sys.path and import it as `main`.
@@ -94,6 +107,30 @@ class FakeUpdate:
         return FakeResponse(updated)
 
 
+class FakeUpsert:
+    """Mimics .upsert(row, on_conflict=col).execute(): inserts when no row
+    matches the conflict column, otherwise returns the existing row
+    unchanged (a real upsert would merge in the new values; this fake only
+    needs to support the id-only upsert main.py does today)."""
+
+    def __init__(self, table, row, on_conflict):
+        self._table = table
+        self._row = row
+        self._on_conflict = on_conflict
+
+    def execute(self):
+        conflict_value = self._row.get(self._on_conflict)
+        for existing in self._table.rows:
+            if str(existing.get(self._on_conflict)) == str(conflict_value):
+                return FakeResponse([existing])
+
+        row = dict(self._row)
+        row.setdefault("id", f"{self._table.name}-{len(self._table.rows) + 1}")
+        row.setdefault("created_at", "2026-09-18T10:00:00Z")
+        self._table.rows.append(row)
+        return FakeResponse([row])
+
+
 class FakeTable:
     """Stands in for a supabase-py table handle, i.e. the object returned by
     `supabase.table(name)`, holding its rows in memory."""
@@ -107,6 +144,9 @@ class FakeTable:
 
     def insert(self, row):
         return FakeInsert(self, row)
+
+    def upsert(self, row, on_conflict="id"):
+        return FakeUpsert(self, row, on_conflict)
 
     def update(self, values):
         return FakeUpdate(self, values)
