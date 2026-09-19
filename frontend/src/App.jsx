@@ -227,10 +227,17 @@ function App() {
     }
   }, [sessionState, restRemaining]);
 
+  // Seconds of lead-in after tapping start. Long enough to put the phone
+  // down and get into position -- 5 was not.
+  const GET_READY_SECONDS = 8;
+
   const beginGetReady = () => {
     primeAudio();
-    setGetReadyRemaining(5);
+    setGetReadyRemaining(GET_READY_SECONDS);
     setSessionState('getready');
+    // Speak the opening number here: the ticking effect below only fires a
+    // second later, so without this the first number is shown but never said.
+    say(GET_READY_SECONDS, { fallback: { frequency: 880, duration: 0.1 } });
   };
 
   const addRestTime = (seconds) => setRestRemaining(r => Math.max(0, r + seconds));

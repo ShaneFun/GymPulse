@@ -427,6 +427,9 @@ def get_workout_analysis(schedule_id: str, db: Client = Depends(get_supabase)):
                 "id": log["id"],
                 "log_name": log.get("log_name"),
                 "actual_weight": a_weight,
+                # The UI counts sets and totals reps from this. Omitting it is
+                # why every session used to render as 0 sets / 0 reps.
+                "actual_reps": a_reps,
                 "status": status,
                 "recommendation": rec,
                 "created_at": log.get("created_at")
