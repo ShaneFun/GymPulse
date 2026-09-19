@@ -95,9 +95,8 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [exercise, setExercise] = useState(exerciseLocked || 'bicep_curl');
-  // Display badge removed (WorkoutTab now shows the live count via onRepUpdate);
-  // setRepCount is kept so the rep state machine below stays untouched.
-  const [, setRepCount] = useState(0);
+  // The live rep count is owned by the parent: repCountRef is the source of
+  // truth and reaches WorkoutTab through onRepUpdate, so no local state here.
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [feedback, setFeedback] = useState('Stand in frame');
 
@@ -121,7 +120,6 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   // Reset counter when resetKey changes (parent triggers this between sets)
   useEffect(() => {
     repCountRef.current = 0;
-    setRepCount(0);
     stageRef.current = null;
     angleHistoryRef.current = [];
   }, [resetKey]);
@@ -129,7 +127,7 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   // Auto-start or cleanup on unmount
   useEffect(() => {
     if (!window.Pose || !window.Camera) {
-      setFeedback('⚠️ MediaPipe failed to load. Check index.html script tags.');
+      setFeedback('MediaPipe failed to load. Check index.html script tags.');
       return;
     }
     if (autoStart) {
@@ -236,7 +234,6 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
 
     const addRep = () => {
       repCountRef.current += 1;
-      setRepCount(repCountRef.current);
       onRepUpdateRef.current?.(repCountRef.current);
     };
 
@@ -289,7 +286,6 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
 
   const resetCount = () => {
     repCountRef.current = 0;
-    setRepCount(0);
     stageRef.current = null;
   };
 
