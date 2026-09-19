@@ -6,6 +6,7 @@ import {
   LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
+import { primeAudio } from './lib/beep';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -173,6 +174,9 @@ function App() {
 
   const startSession = () => {
     if (!selectedPlan) { alert('Select a plan first'); return; }
+    // iOS blocks audio until the page has had a user gesture. This tap is one,
+    // so unlock the context here or the countdown beeps never sound.
+    primeAudio();
     setCurrentSet(1);
     setCompletedSets([]);
     setLiveReps(0);
@@ -298,7 +302,10 @@ function App() {
       {/* ── Content ── */}
       <main className="app-content">
 
-        {activeTab === 'counter' && (
+        {/* Kept mounted (merely hidden) while a session is active: unmounting
+            would tear down the camera and reset the rep counter mid-set. */}
+        {(activeTab === 'counter' || sessionState === 'active') && (
+          <div hidden={activeTab !== 'counter'}>
           <WorkoutTab
             plans={plans}
             selectedPlan={selectedPlan}
@@ -320,6 +327,7 @@ function App() {
             skipProgression={skipProgression}
             cancelSession={cancelSession}
           />
+          </div>
         )}
 
         {activeTab === 'plan' && (

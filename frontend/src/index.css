@@ -39,6 +39,10 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* App.jsx keeps the Workout tab mounted but hidden during a session, so this
+   has to win against any display set by a component's own class. */
+[hidden] { display: none !important; }
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -524,7 +528,7 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 }
 
 .camera-readout-reps {
-  font-size: 40px;
+  font-size: 76px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -719,3 +723,35 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   color: var(--accent-ink);
   border-radius: var(--r-pill);
 }
+
+/* ─── Last-3 countdown ─── */
+/* A ghosted number over the video for the final reps: big enough to register
+   peripherally mid-rep, transparent enough to still see yourself through it. */
+.camera-countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+
+  font-size: 42vh;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.28);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+
+  animation: countdown-pop 0.45s ease-out;
+}
+
+@keyframes countdown-pop {
+  0%   { opacity: 0;    transform: scale(1.35); }
+  35%  { opacity: 1;    transform: scale(1); }
+  100% { opacity: 0.75; transform: scale(1); }
+}
+
+/* ─── Active-session density ─── */
+/* The camera, its controls and the chips have to clear the tab bar on a phone
+   without scrolling, so this block is deliberately tighter than the defaults. */
+.card-dark .camera-controls { padding: 10px 12px; }
+.card-dark + .set-chips { margin-top: 10px; }

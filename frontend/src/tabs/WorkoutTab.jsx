@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy } from 'lucide-react';
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import { formatWeight } from '../lib/format';
+import { beep } from '../lib/beep';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -19,6 +20,32 @@ function WorkoutTab({
   cancelSession,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
+
+  // Reps left in this set, or null when there is no active target. Drives both
+  // the on-screen countdown and the beeps.
+  const repsRemaining = (sessionState === 'active' && selectedPlan)
+    ? selectedPlan.target_reps - liveReps
+    : null;
+  const showCountdown = repsRemaining !== null && repsRemaining > 0 && repsRemaining <= 3;
+
+  // One beep per value, not per render: without this guard any re-render while
+  // sitting on the same rep would retrigger the tone.
+  const lastBeepedRef = useRef(null);
+
+  useEffect(() => {
+    if (!showCountdown) {
+      lastBeepedRef.current = null;
+      return;
+    }
+    if (lastBeepedRef.current === repsRemaining) return;
+    lastBeepedRef.current = repsRemaining;
+    // Final rep gets a higher, longer tone so it is distinguishable without
+    // looking at the screen.
+    beep(repsRemaining === 1
+      ? { frequency: 1320, duration: 0.22 }
+      : { frequency: 880, duration: 0.12 });
+  }, [showCountdown, repsRemaining]);
+
 
   return (
     <div>
@@ -94,10 +121,20 @@ function WorkoutTab({
               onRepUpdate={setLiveReps}
               onControls={setCameraControls}
               overlay={
-                <div className="camera-readout">
-                  <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
-                  <span className="camera-readout-reps tnum">{liveReps}</span>
-                </div>
+                <>
+                  <div className="camera-readout">
+                    <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
+                    <span className="camera-readout-reps tnum">{liveReps}</span>
+                  </div>
+                  {showCountdown && (
+                    // key remounts the node each time the number changes, which
+                    // replays the animation. aria-hidden: the live rep count
+                    // above already conveys this to assistive tech.
+                    <div className="camera-countdown tnum" key={repsRemaining} aria-hidden="true">
+                      {repsRemaining}
+                    </div>
+                  )}
+                </>
               }
             />
 
