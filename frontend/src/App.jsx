@@ -6,7 +6,7 @@ import {
   LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
-import { primeAudio, beep } from './lib/beep';
+import { primeAudio, say } from './lib/beep';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -223,7 +223,7 @@ function App() {
   // One tone the moment rest runs out.
   useEffect(() => {
     if (sessionState === 'resting' && restRemaining === 0) {
-      beep({ frequency: 660, duration: 0.3 });
+      say('Rest over', { fallback: { frequency: 660, duration: 0.3 } });
     }
   }, [sessionState, restRemaining]);
 
@@ -248,10 +248,10 @@ function App() {
         setLiveReps(0);
         setCameraResetKey(k => k + 1);
         setSessionState('active');
-        beep({ frequency: 1320, duration: 0.25 });
+        say('Go', { fallback: { frequency: 1320, duration: 0.25 } });
       } else {
         setGetReadyRemaining(n => n - 1);
-        beep({ frequency: 880, duration: 0.1 });
+        say(getReadyRemaining - 1, { fallback: { frequency: 880, duration: 0.1 } });
       }
     }, 1000);
     return () => clearTimeout(id);

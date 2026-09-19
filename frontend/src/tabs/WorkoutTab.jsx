@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy } from 'lucide-react';
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import { formatWeight } from '../lib/format';
-import { beep, primeAudio } from '../lib/beep';
+import { say, primeAudio } from '../lib/beep';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -46,11 +46,14 @@ function WorkoutTab({
     }
     if (lastBeepedRef.current === repsRemaining) return;
     lastBeepedRef.current = repsRemaining;
-    // Final rep gets a higher, longer tone so it is distinguishable without
-    // looking at the screen.
-    beep(repsRemaining === 1
-      ? { frequency: 1320, duration: 0.22 }
-      : { frequency: 880, duration: 0.12 });
+    // Spoken, not a tone: the number itself is the information, and you
+    // cannot read the screen mid-rep. Falls back to a tone if the browser
+    // has no speech engine.
+    say(repsRemaining, {
+      fallback: repsRemaining === 1
+        ? { frequency: 1320, duration: 0.22 }
+        : { frequency: 880, duration: 0.12 },
+    });
   }, [showCountdown, repsRemaining]);
 
 
