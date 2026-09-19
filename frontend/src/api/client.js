@@ -2,7 +2,9 @@ import axios from 'axios';
 import { supabase } from '../lib/supabase';
 
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
+  // Relative, not an absolute localhost URL: Vite proxies /api to the backend,
+  // so this works unchanged from a phone, where 127.0.0.1 would mean the phone.
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
