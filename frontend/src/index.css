@@ -421,6 +421,8 @@ input:focus-visible, select:focus-visible {
   bottom: 16px;
 }
 
+.text-center { text-align: center; }
+
 .camera-scrim {
   position: absolute;
   inset: 0;

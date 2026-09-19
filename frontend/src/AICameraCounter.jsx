@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Play, Square, RotateCcw, Camera } from 'lucide-react';
 
 // Exercise configurations ported from Good-GYM's exercises.json
 // MediaPipe landmark indices:
@@ -94,7 +95,9 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [exercise, setExercise] = useState(exerciseLocked || 'bicep_curl');
-  const [repCount, setRepCount] = useState(0);
+  // Display badge removed (WorkoutTab now shows the live count via onRepUpdate);
+  // setRepCount is kept so the rep state machine below stays untouched.
+  const [, setRepCount] = useState(0);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [feedback, setFeedback] = useState('Stand in frame');
 
@@ -249,17 +252,17 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   // ── Drawing Helpers ─────────────────────────────────────
   const drawAngleText = (ctx, angle, lm, w, h) => {
     ctx.save();
-    ctx.fillStyle = '#00ffcc';
-    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = '#D4F034';
+    ctx.font = 'bold 18px Inter, sans-serif';
     ctx.fillText(`${Math.round(angle)}°`, w - lm.x * w + 12, lm.y * h);
     ctx.restore();
   };
 
   const drawSkeleton = (ctx, lms, w, h) => {
     ctx.save();
-    ctx.strokeStyle = '#00ffcc';
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 3;
-    ctx.fillStyle = '#ff0055';
+    ctx.fillStyle = '#FFFFFF';
 
     const connections = [
       [11,12],[11,13],[13,15],[12,14],[14,16],
@@ -292,24 +295,10 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
 
   // ── Render ──────────────────────────────────────────────
   return (
-    <div style={{
-      background: 'rgba(15,15,26,0.98)',
-      borderRadius: '16px',
-      border: '1px solid rgba(255,255,255,0.08)',
-      overflow: 'hidden',
-      width: '100%',
-    }}>
+    <>
       {!exerciseLocked && (
-        <div style={{ padding: '10px 10px 0' }}>
-          <select
-            value={exercise}
-            onChange={(e) => setExercise(e.target.value)}
-            style={{
-              width: '100%', padding: '10px', borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: '#312e81', color: 'white', fontSize: '0.95rem',
-            }}
-          >
+        <div className="card-dark-body">
+          <select value={exercise} onChange={(e) => setExercise(e.target.value)}>
             {Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => (
               <option key={key} value={key}>{cfg.label}</option>
             ))}
@@ -318,49 +307,40 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
       )}
 
       {/* Camera view */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000' }}>
-        <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
-        <canvas ref={canvasRef} width={400} height={300} style={{ width: '100%', height: '100%', display: 'block' }} />
-
-        <div style={{
-          position: 'absolute', top: 10, right: 10,
-          background: 'rgba(0,0,0,0.75)', padding: '6px 14px',
-          borderRadius: '20px', color: '#00ffcc', fontWeight: 'bold', fontSize: '1.3rem',
-        }}>
-          {repCount}
-        </div>
+      <div className="camera-frame">
+        <video ref={videoRef} playsInline muted />
+        <canvas ref={canvasRef} width={400} height={300} />
 
         {!isCameraActive && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', background: 'rgba(0,0,0,0.65)',
-            flexDirection: 'column', gap: 8,
-          }}>
-            <span style={{ fontSize: '2.5rem' }}>📷</span>
-            <span style={{ color: '#fff', fontSize: '0.85rem' }}>Camera off</span>
+          <div className="camera-scrim">
+            <Camera size={32} strokeWidth={1.5} />
+            <span className="micro">Camera off</span>
           </div>
         )}
       </div>
 
-      <p style={{ color: '#94a3b8', margin: '8px 12px', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-        {feedback}
-      </p>
+      <div className="card-dark-body">
+        <p className="micro text-center">{feedback}</p>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 10px 10px' }}>
-        {!isCameraActive ? (
-          <button onClick={startCamera} style={{ flex: 1, background: '#10b981', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-            ▶ Start Camera
+        <div className="btn-row">
+          {!isCameraActive ? (
+            <button className="btn btn-sm btn-secondary" onClick={startCamera}>
+              <Play size={16} strokeWidth={1.5} />
+              Start
+            </button>
+          ) : (
+            <button className="btn btn-sm btn-secondary" onClick={stopCamera}>
+              <Square size={16} strokeWidth={1.5} />
+              Stop
+            </button>
+          )}
+          <button className="btn btn-sm btn-secondary" onClick={resetCount}>
+            <RotateCcw size={16} strokeWidth={1.5} />
+            Reset
           </button>
-        ) : (
-          <button onClick={stopCamera} style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-            ⏹ Stop
-          </button>
-        )}
-        <button onClick={resetCount} style={{ background: '#374151', color: '#fff', border: 'none', padding: '11px 14px', borderRadius: '8px', cursor: 'pointer' }}>
-          ↺
-        </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
