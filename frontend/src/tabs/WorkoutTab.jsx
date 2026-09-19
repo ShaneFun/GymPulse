@@ -3,7 +3,7 @@ import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy, ClipboardList
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import { formatWeight } from '../lib/format';
-import { say, primeAudio } from '../lib/beep';
+import { say, beep, primeAudio } from '../lib/beep';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -38,24 +38,36 @@ function WorkoutTab({
 
   // One beep per value, not per render: without this guard any re-render while
   // sitting on the same rep would retrigger the tone.
-  const lastBeepedRef = useRef(null);
+  // Which rep number was last called, so a re-render never repeats a cue.
+  const lastCalledRepRef = useRef(0);
 
   useEffect(() => {
-    if (!showCountdown) {
-      lastBeepedRef.current = null;
+    if (sessionState !== 'active' || !selectedPlan || liveReps <= 0) {
+      lastCalledRepRef.current = 0;
       return;
     }
-    if (lastBeepedRef.current === repsRemaining) return;
-    lastBeepedRef.current = repsRemaining;
-    // Spoken, not a tone: the number itself is the information, and you
-    // cannot read the screen mid-rep. Falls back to a tone if the browser
-    // has no speech engine.
-    say(repsRemaining, {
-      fallback: repsRemaining === 1
-        ? { frequency: 1320, duration: 0.22 }
-        : { frequency: 880, duration: 0.12 },
-    });
-  }, [showCountdown, repsRemaining]);
+    if (lastCalledRepRef.current === liveReps) return;
+    lastCalledRepRef.current = liveReps;
+
+    const left = selectedPlan.target_reps - liveReps;
+
+    // Every rep is called out, because you cannot read the screen mid-rep.
+    // The tail switches from counting up to counting down, so the last
+    // stretch tells you how much is left rather than how far you have come.
+    if (left === 0) {
+      // Target hit: a tone, not a word — it needs to cut through, and by
+      // then you are not listening for a number.
+      beep({ frequency: 1320, duration: 0.35 });
+    } else if (left === 3) {
+      say('Last three', { fallback: { frequency: 990, duration: 0.18 } });
+    } else if (left === 2) {
+      say('Two', { fallback: { frequency: 990, duration: 0.15 } });
+    } else if (left === 1) {
+      say('One', { fallback: { frequency: 1100, duration: 0.15 } });
+    } else {
+      say(liveReps, { fallback: { frequency: 880, duration: 0.1 } });
+    }
+  }, [liveReps, sessionState, selectedPlan]);
 
 
   return (
