@@ -253,17 +253,32 @@ function App() {
     datasets: [{
       label: 'Total Reps',
       data: workoutHistory.map(l => (l.actual_reps || []).reduce((a, b) => a + b, 0)).reverse(),
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.15)',
-      tension: 0.4,
-      fill: true,
+      borderColor: '#0A0A0A',
+      backgroundColor: 'transparent',
+      pointBackgroundColor: '#D4F034',
+      pointBorderColor: '#0A0A0A',
+      pointRadius: 4,
+      borderWidth: 2,
+      tension: 0.35,
+      fill: false,
     }],
   };
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true } },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+        ticks: { color: '#6B6B70', font: { size: 11 } },
+      },
+      x: {
+        grid: { display: false },
+        ticks: { color: '#6B6B70', font: { size: 11 } },
+      },
+    },
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
