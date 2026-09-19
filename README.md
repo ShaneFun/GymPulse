@@ -16,6 +16,7 @@ GymPulse is an intelligent web application designed to automatically track, coun
 ## 📋 Table of Contents
 - [✨ Key Features](#-key-features)
 - [🏗 Architecture & Tech Stack](#-architecture--tech-stack)
+- [⚙ Configuration](#-configuration)
 - [🚀 Getting Started](#-getting-started)
 - [🧠 How the AI Works](#-how-the-ai-works)
 
@@ -45,6 +46,30 @@ GymPulse is an intelligent web application designed to automatically track, coun
 
 ---
 
+## ⚙ Configuration
+
+GymPulse requires Supabase credentials to run. Before starting the app:
+
+1. **Copy environment files:**
+   ```bash
+   cp .env.example .env
+   cp frontend/.env.example frontend/.env
+   ```
+
+2. **Fill in your Supabase project details:**
+   - Open your [Supabase project dashboard](https://supabase.com/dashboard)
+   - In `.env` (root), set:
+     - `SUPABASE_URL` — your project URL (Settings → API → Project URL)
+     - `SUPABASE_KEY` — your project API key (Settings → API → Project API keys → anon public)
+   - In `frontend/.env`, set the same values:
+     - `VITE_SUPABASE_URL` — same project URL
+     - `VITE_SUPABASE_ANON_KEY` — same anon public key
+
+3. **Create a Supabase account:**
+   The app requires an existing user account to log in. Public signup is disabled, so you must sign up via your Supabase dashboard before using the app.
+
+---
+
 ## 🚀 Getting Started
 
 Follow these instructions to run the project locally.
@@ -55,7 +80,6 @@ Follow these instructions to run the project locally.
 # Navigate to project root and create a virtual environment
 cd "c:\Users\siangyou\Desktop\AI fitness Analyze"
 venv\Scripts\activate
-python backend/app/main.py
 
 # Activate the virtual environment
 source venv/Scripts/activate  # (On Windows)
@@ -63,16 +87,8 @@ source venv/Scripts/activate  # (On Windows)
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-Create a `.env` file in the root directory with your Supabase credentials:
-```env
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_anon_key
-```
-
-Start the FastAPI server:
-```bash
+# Start the FastAPI server
 python backend/app/main.py
 ```
 *The API will be available at `http://localhost:8000`*
