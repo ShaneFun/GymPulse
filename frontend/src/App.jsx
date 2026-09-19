@@ -63,12 +63,17 @@ function App() {
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
+  // Days the user intends to train, as 'YYYY-MM-DD' strings.
+  const [plannedDays, setPlannedDays] = useState([]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
     loadPlans();
     loadHistory();
+    fitnessApi.getPlannedDays()
+      .then(res => setPlannedDays((res.data?.data || []).map(d => d.day)))
+      .catch(err => console.error('loadPlannedDays:', err));
   }, [userId]);
 
   const loadPlans = async () => {
@@ -90,6 +95,20 @@ function App() {
       );
     } catch (err) {
       console.error('loadPlans:', err);
+    }
+  };
+
+  const togglePlannedDay = async (day) => {
+    const planned = plannedDays.includes(day);
+    // Optimistic: the calendar should respond to the tap immediately, and a
+    // failure reverts by reloading the truth rather than guessing.
+    setPlannedDays(list => (planned ? list.filter(d => d !== day) : [...list, day]));
+    try {
+      if (planned) await fitnessApi.unplanDay(day);
+      else await fitnessApi.planDay(day);
+    } catch (err) {
+      console.error('togglePlannedDay:', err);
+      setPlannedDays(list => (planned ? [...list, day] : list.filter(d => d !== day)));
     }
   };
 
@@ -426,6 +445,8 @@ function App() {
 
         {activeTab === 'progress' && (
           <ProgressTab
+            plannedDays={plannedDays}
+            onTogglePlannedDay={togglePlannedDay}
             workoutHistory={workoutHistory}
             chartData={chartData}
             chartOptions={chartOptions}

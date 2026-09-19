@@ -142,6 +142,12 @@ class ScheduleCreate(BaseModel):
     rep_increment: int = Field(default=0, ge=0)
     rest_seconds: int = Field(default=90, ge=0)
 
+class PlannedDayCreate(BaseModel):
+    # ISO date, e.g. "2026-09-22". Stored as a real date column, so
+    # Postgres rejects anything malformed rather than storing junk.
+    day: str
+
+
 class ProfileUpdate(BaseModel):
     display_name: str | None = None
     phone: str | None = None
@@ -177,6 +183,63 @@ def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), u
         raise
     except Exception as e:
         raise _map_supabase_error(e)
+
+@app.get("/planned-days")
+def list_planned_days(
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    """Days the user intends to train. RLS also scopes these, but filtering
+    here keeps the query honest about its intent."""
+    try:
+        response = db.table("planned_days").select("*").eq("user_id", user_id).execute()
+        return {"data": response.data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _map_supabase_error(e)
+
+
+@app.post("/planned-days")
+def create_planned_day(
+    planned: PlannedDayCreate,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    try:
+        # upsert on the (user_id, day) unique constraint: planning an
+        # already-planned day is a no-op, not an error the UI has to handle.
+        response = db.table("planned_days").upsert(
+            {"user_id": user_id, "day": planned.day},
+            on_conflict="user_id,day"
+        ).execute()
+
+        if len(response.data) == 0:
+            raise HTTPException(status_code=400, detail="Failed to plan that day.")
+
+        return {"message": "Day planned!", "data": response.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _map_supabase_error(e)
+
+
+@app.delete("/planned-days/{day}")
+def delete_planned_day(
+    day: str,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    try:
+        db.table("planned_days").delete().eq("user_id", user_id).eq("day", day).execute()
+        # Deleting a day that was never planned is success, not a 404: the
+        # caller wanted it gone and it is gone.
+        return {"message": "Day unplanned."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _map_supabase_error(e)
+
 
 @app.get("/profile")
 def get_profile(

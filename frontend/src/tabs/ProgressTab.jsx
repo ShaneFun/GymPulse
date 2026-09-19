@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
-import { TrendingUp, ChevronLeft, ChevronRight, Trophy, Check, Minus, X } from 'lucide-react';
+import { TrendingUp, ChevronLeft, ChevronRight, Trophy, Check, Minus, X, CalendarPlus, CalendarX } from 'lucide-react';
 import { dayKey, groupByDay, monthGrid } from '../lib/workoutCalendar';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -24,7 +24,7 @@ const STATE_LABEL = {
   fail: 'missed target',
 };
 
-function ProgressTab({ workoutHistory, chartData, chartOptions }) {
+function ProgressTab({ workoutHistory, chartData, chartOptions, plannedDays = [], onTogglePlannedDay }) {
   const days = groupByDay(workoutHistory);
 
   // Open on the most recent training day rather than today, so arriving here
@@ -45,6 +45,7 @@ function ProgressTab({ workoutHistory, chartData, chartOptions }) {
   };
 
   const cells = monthGrid(viewYear, viewMonth);
+  const plannedSet = new Set(plannedDays);
   const todayKey = dayKey(new Date());
   const selectedDay = days.get(selectedKey) || null;
 
@@ -88,10 +89,14 @@ function ProgressTab({ workoutHistory, chartData, chartOptions }) {
               {cells.map(({ date, key, inMonth }) => {
                 const day = days.get(key);
                 const Glyph = day ? STATE_GLYPH[day.state] : null;
+                // An outcome colour beats the planned dash: once a day has
+                // happened, what you did matters more than what you meant to.
+                const isPlanned = plannedSet.has(key);
                 const classes = [
                   'cal-day',
                   inMonth ? '' : 'cal-day-outside',
                   day ? `cal-day-${day.state}` : '',
+                  !day && isPlanned ? 'cal-day-planned' : '',
                   key === todayKey ? 'cal-day-today' : '',
                   key === selectedKey ? 'cal-day-selected' : '',
                 ].filter(Boolean).join(' ');
@@ -107,7 +112,11 @@ function ProgressTab({ workoutHistory, chartData, chartOptions }) {
                     className={classes}
                     onClick={() => setSelectedKey(key)}
                     aria-pressed={key === selectedKey}
-                    aria-label={day ? `${readable}, ${STATE_LABEL[day.state]}` : `${readable}, no workout`}
+                    aria-label={
+                      day ? `${readable}, ${STATE_LABEL[day.state]}`
+                        : isPlanned ? `${readable}, workout planned`
+                        : `${readable}, no workout`
+                    }
                   >
                     <span className="cal-day-num">{date.getDate()}</span>
                     {Glyph && <Glyph size={11} strokeWidth={2.5} className="cal-day-glyph" />}
@@ -121,6 +130,7 @@ function ProgressTab({ workoutHistory, chartData, chartOptions }) {
               <span className="cal-key cal-day-pass" /> Passed
               <span className="cal-key cal-day-mixed" /> Mixed
               <span className="cal-key cal-day-fail" /> Missed
+              <span className="cal-key cal-day-planned" /> Planned
             </div>
           </div>
 
@@ -128,6 +138,30 @@ function ProgressTab({ workoutHistory, chartData, chartOptions }) {
             {new Date(selectedKey).toLocaleDateString('en-GB', {
               weekday: 'long', day: 'numeric', month: 'long',
             })}
+          </div>
+
+          <div className="card">
+            <div className="card-row">
+              <div>
+                <div className="row-title">
+                  {plannedSet.has(selectedKey) ? 'Workout planned' : 'No plan for this day'}
+                </div>
+                <div className="row-sub">
+                  {selectedDay
+                    ? 'Already trained on this day.'
+                    : 'Mark the days you intend to train.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`btn btn-sm ${plannedSet.has(selectedKey) ? 'btn-secondary' : 'btn-accent'}`}
+                onClick={() => onTogglePlannedDay?.(selectedKey)}
+              >
+                {plannedSet.has(selectedKey)
+                  ? <><CalendarX size={16} strokeWidth={1.5} />Unplan</>
+                  : <><CalendarPlus size={16} strokeWidth={1.5} />Plan</>}
+              </button>
+            </div>
           </div>
 
           {!selectedDay ? (

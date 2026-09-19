@@ -131,6 +131,26 @@ class FakeUpsert:
         return FakeResponse([row])
 
 
+class FakeDelete:
+    """Mimics .delete().eq(col, val).execute()."""
+
+    def __init__(self, table):
+        self._table = table
+        self._filters = []
+
+    def eq(self, column, value):
+        self._filters.append((column, value))
+        return self
+
+    def execute(self):
+        removed = [
+            r for r in self._table.rows
+            if all(str(r.get(c)) == str(v) for c, v in self._filters)
+        ]
+        self._table.rows = [r for r in self._table.rows if r not in removed]
+        return FakeResponse(removed)
+
+
 class FakeTable:
     """Stands in for a supabase-py table handle, i.e. the object returned by
     `supabase.table(name)`, holding its rows in memory."""
@@ -144,6 +164,9 @@ class FakeTable:
 
     def insert(self, row):
         return FakeInsert(self, row)
+
+    def delete(self):
+        return FakeDelete(self)
 
     def upsert(self, row, on_conflict="id"):
         return FakeUpsert(self, row, on_conflict)

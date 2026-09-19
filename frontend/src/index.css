@@ -943,3 +943,14 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 
 .badge-pb { background: var(--accent); color: var(--accent-ink); }
 .cal-inline-badge { margin-left: 6px; font-size: 10px; padding: 2px 6px; }
+
+/* A planned day is an intention, not an outcome — a dashed accent outline
+   rather than one of the four solid result colours. */
+.cal-day-planned {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.cal-key.cal-day-planned { border-width: 2px; background: transparent; }
