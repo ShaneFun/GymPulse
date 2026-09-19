@@ -460,14 +460,25 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 /* ─── Camera frame ─── */
 .card-dark-body { padding: 16px 20px 20px; }
 
+/* No fixed aspect-ratio: the canvas is sized to the camera's real frame, so
+   letting it set the height keeps a portrait phone camera undistorted.
+   min-height holds the shape before the first frame arrives. */
 .camera-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  min-height: 200px;
   background: #000;
 }
 
-.camera-frame canvas { width: 100%; height: 100%; display: block; }
+.camera-frame canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* Keep a tall portrait frame from pushing the controls off-screen. */
+  max-height: 60vh;
+  object-fit: contain;
+  margin: 0 auto;
+}
 .camera-frame video  { display: none; }
 
 .camera-overlay {

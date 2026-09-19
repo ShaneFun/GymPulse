@@ -207,9 +207,24 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   const onResults = (results) => {
     if (!canvasRef.current || !videoRef.current) return;
 
-    const ctx = canvasRef.current.getContext('2d');
-    const w = canvasRef.current.width;
-    const h = canvasRef.current.height;
+    const canvas = canvasRef.current;
+
+    // Match the canvas to the camera's real frame size. Without this the
+    // backing store stays at its markup default and drawImage stretches the
+    // frame to fit, which visibly squashes a portrait phone camera into a
+    // landscape box. Keeping them equal also means the 1:1 draw below and the
+    // landmark maths (lm.x * w) stay correct for any camera aspect ratio.
+    // Only assign on change: writing width/height resets the whole context.
+    const srcW = results.image.width;
+    const srcH = results.image.height;
+    if (srcW && srcH && (canvas.width !== srcW || canvas.height !== srcH)) {
+      canvas.width = srcW;
+      canvas.height = srcH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
@@ -248,17 +263,24 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
 
   // ── Drawing Helpers ─────────────────────────────────────
   const drawAngleText = (ctx, angle, lm, w, h) => {
+    // Sized from the frame, not fixed pixels: the canvas now matches the
+    // camera's real resolution, so a fixed 18px would shrink to nothing once
+    // a 720p phone frame is scaled down into the card.
+    const scale = w / 640;
     ctx.save();
     ctx.fillStyle = '#D4F034';
-    ctx.font = 'bold 18px Inter, sans-serif';
-    ctx.fillText(`${Math.round(angle)}°`, w - lm.x * w + 12, lm.y * h);
+    ctx.font = `bold ${Math.round(18 * scale)}px Inter, sans-serif`;
+    ctx.fillText(`${Math.round(angle)}°`, w - lm.x * w + 12 * scale, lm.y * h);
     ctx.restore();
   };
 
   const drawSkeleton = (ctx, lms, w, h) => {
+    // See drawAngleText: stroke and joint size scale with the frame so the
+    // overlay stays legible at any camera resolution.
+    const scale = w / 640;
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * scale;
     ctx.fillStyle = '#FFFFFF';
 
     const connections = [
@@ -277,7 +299,7 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
     lms.forEach((lm, idx) => {
       if (idx > 10 && lm.visibility > 0.5) {
         ctx.beginPath();
-        ctx.arc(w - lm.x * w, lm.y * h, 5, 0, 2 * Math.PI);
+        ctx.arc(w - lm.x * w, lm.y * h, 5 * scale, 0, 2 * Math.PI);
         ctx.fill();
       }
     });
@@ -305,7 +327,7 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
       {/* Camera view */}
       <div className="camera-frame">
         <video ref={videoRef} playsInline muted />
-        <canvas ref={canvasRef} width={400} height={300} />
+        <canvas ref={canvasRef} width={640} height={480} />
 
         {!isCameraActive && (
           <div className="camera-scrim">
