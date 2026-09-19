@@ -8,7 +8,7 @@ import { formatWeight } from '../lib/format';
 function PlanTab({
   plans, planName, setPlanName, planExercise, setPlanExercise, planSets, setPlanSets,
   planReps, setPlanReps, planWeight, setPlanWeight, planWeightInc, setPlanWeightInc,
-  planRepInc, setPlanRepInc, handleCreatePlan, onStartPlan,
+  planRepInc, setPlanRepInc, planRest, setPlanRest, handleCreatePlan, onStartPlan,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const exerciseTriggerRef = useRef(null);
@@ -62,6 +62,13 @@ function PlanTab({
               <label className="label">Weight (kg)</label>
               <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
             </div>
+          </div>
+
+          <div className="section-heading">Rest</div>
+          <p className="dim">Countdown between sets</p>
+          <div className="input-group">
+            <label className="label">Seconds</label>
+            <input type="number" min="0" step="5" placeholder="90" value={planRest} onChange={e => setPlanRest(e.target.value)} />
           </div>
 
           <div className="section-heading">Progression</div>

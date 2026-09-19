@@ -140,6 +140,7 @@ class ScheduleCreate(BaseModel):
     notes: str | None = None
     weight_increment: float = Field(default=0, ge=0)
     rep_increment: int = Field(default=0, ge=0)
+    rest_seconds: int = Field(default=90, ge=0)
 
 class ProfileUpdate(BaseModel):
     display_name: str | None = None
@@ -241,7 +242,8 @@ def create_schedule(schedule: ScheduleCreate, db: Client = Depends(get_supabase)
             "target_sets": schedule.target_sets,
             "target_reps": schedule.target_reps,
             "weight_increment": schedule.weight_increment,
-            "rep_increment": schedule.rep_increment
+            "rep_increment": schedule.rep_increment,
+            "rest_seconds": schedule.rest_seconds
         }).execute()
         
         if len(response.data) == 0:
@@ -283,6 +285,10 @@ def advance_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
         # shows up if this runs against a database where it hasn't been applied.
         weight_increment = current.get("weight_increment") or 0
         rep_increment = current.get("rep_increment") or 0
+        # Rest is a property of the plan, so it carries forward unchanged.
+        rest_seconds = current.get("rest_seconds")
+        if rest_seconds is None:
+            rest_seconds = 90
 
         response = db.table("schedules").insert({
             "program_id": current["program_id"],
@@ -292,7 +298,8 @@ def advance_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
             "target_sets": current["target_sets"],
             "target_reps": current["target_reps"] + rep_increment,
             "weight_increment": weight_increment,
-            "rep_increment": rep_increment
+            "rep_increment": rep_increment,
+            "rest_seconds": rest_seconds
         }).execute()
 
         if len(response.data) == 0:

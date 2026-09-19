@@ -755,3 +755,45 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
    without scrolling, so this block is deliberately tighter than the defaults. */
 .card-dark .camera-controls { padding: 10px 12px; }
 .card-dark + .set-chips { margin-top: 10px; }
+
+/* ─── Rest between sets ─── */
+.rest-panel {
+  background: var(--surface-dark);
+  color: var(--text-on-dark);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-md);
+  padding: 28px 20px 20px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.rest-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.rest-clock {
+  font-size: 84px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-next {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 20px;
+}
+
+.rest-actions { margin-top: 8px; }
+
+/* The lead-in reuses the countdown's placement but reads as a cue rather
+   than a warning, so it sits brighter and slightly smaller. */
+.camera-countdown-lead {
+  font-size: 34vh;
+  color: rgba(212, 240, 52, 0.55);
+}

@@ -141,3 +141,30 @@ def test_advance_can_be_chained_across_weeks(client, fake_db):
     assert week_3["target_reps"] == 12
     assert week_3["weight_increment"] == 2.5
     assert len(fake_db.table("schedules").rows) == 3
+
+
+def test_advance_carries_rest_seconds_forward(client, fake_db):
+    fake_db.seed("schedules", [{
+        "id": "sched-1", "program_id": "prog-1", "week": 1,
+        "exercise_name": "squat", "target_weight": 0,
+        "target_sets": 3, "target_reps": 12,
+        "weight_increment": 0, "rep_increment": 1, "rest_seconds": 120,
+    }])
+
+    created = client.post("/schedules/sched-1/advance").json()["data"]
+
+    assert created["rest_seconds"] == 120
+
+
+def test_advance_defaults_rest_when_missing(client, fake_db):
+    """Rows predating the rest_seconds column read back as None."""
+    fake_db.seed("schedules", [{
+        "id": "sched-1", "program_id": "prog-1", "week": 1,
+        "exercise_name": "squat", "target_weight": 0,
+        "target_sets": 3, "target_reps": 12,
+        "weight_increment": 0, "rep_increment": 1, "rest_seconds": None,
+    }])
+
+    created = client.post("/schedules/sched-1/advance").json()["data"]
+
+    assert created["rest_seconds"] == 90

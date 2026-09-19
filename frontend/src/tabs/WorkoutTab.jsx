@@ -13,11 +13,18 @@ const NO_CAMERA_CONTROLS = {
   resetCount: () => {},
 };
 
+// Rest reads as a clock, not a bare second count: 1:30 is quicker to parse
+// mid-workout than 90.
+const formatClock = (totalSeconds) => {
+  const s = Math.max(0, totalSeconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
 function WorkoutTab({
   plans, selectedPlan, setSelectedPlan, sessionState, currentSet, completedSets,
   liveReps, setLiveReps, cameraResetKey, autoCamera, progression,
   advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
-  cancelSession,
+  cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
 
@@ -111,7 +118,7 @@ function WorkoutTab({
       )}
 
       {/* ACTIVE — Workout in progress */}
-      {sessionState === 'active' && selectedPlan && (
+      {(sessionState === 'active' || sessionState === 'getready') && selectedPlan && (
         <>
           <div className="card-dark">
             <AICameraCounter
@@ -126,6 +133,12 @@ function WorkoutTab({
                     <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
                     <span className="camera-readout-reps tnum">{liveReps}</span>
                   </div>
+                  {sessionState === 'getready' && (
+                    <div className="camera-countdown camera-countdown-lead tnum"
+                      key={`lead-${getReadyRemaining}`} aria-hidden="true">
+                      {getReadyRemaining}
+                    </div>
+                  )}
                   {showCountdown && (
                     // key remounts the node each time the number changes, which
                     // replays the animation. aria-hidden: the live rep count
@@ -206,6 +219,42 @@ function WorkoutTab({
       )}
 
       {/* DONE — Workout complete */}
+      {sessionState === 'resting' && selectedPlan && (
+        <>
+          <div className="rest-panel">
+            <div className="rest-label">
+              {restRemaining > 0 ? 'Rest' : 'Ready when you are'}
+            </div>
+            <div className="rest-clock tnum">{formatClock(restRemaining)}</div>
+            <div className="rest-next">Up next &middot; Set {currentSet} of {selectedPlan.target_sets}</div>
+
+            <button type="button" className="btn btn-accent btn-block" onClick={beginGetReady}>
+              <Play size={18} strokeWidth={1.5} />
+              {restRemaining > 0 ? 'Skip rest' : 'Start set'}
+            </button>
+
+            <div className="btn-row rest-actions">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => addRestTime(30)}>
+                +30s
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={cancelSession}>
+                <X size={16} strokeWidth={1.5} />
+                End workout
+              </button>
+            </div>
+          </div>
+
+          <div className="set-chips">
+            {completedSets.map((reps, i) => (
+              <div key={i} className="set-chip set-chip-done">
+                <div className="set-chip-label">Set {i + 1}</div>
+                <div className="set-chip-value">{reps}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {sessionState === 'done' && selectedPlan && (
         <>
           <div className="card">

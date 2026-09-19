@@ -6,7 +6,7 @@ import {
   LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
-import { primeAudio } from './lib/beep';
+import { primeAudio, beep } from './lib/beep';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -41,6 +41,7 @@ function App() {
   const [planWeight, setPlanWeight] = useState('0');
   const [planWeightInc, setPlanWeightInc] = useState('0');
   const [planRepInc, setPlanRepInc] = useState('0');
+  const [planRest, setPlanRest] = useState('90');
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
@@ -49,6 +50,11 @@ function App() {
   const [currentSet, setCurrentSet] = useState(1);
   const [completedSets, setCompletedSets] = useState([]); // array of rep counts
   const [liveReps, setLiveReps] = useState(0);
+  // Between sets: 'resting' counts the rest down then waits for a tap;
+  // 'getready' is the short lead-in after that tap, during which the camera
+  // warms up but any reps it sees are discarded.
+  const [restRemaining, setRestRemaining] = useState(0);
+  const [getReadyRemaining, setGetReadyRemaining] = useState(0);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
   // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
@@ -142,6 +148,7 @@ function App() {
         target_reps: parseInt(planReps),
         weight_increment: Math.max(0, Number(planWeightInc) || 0),
         rep_increment: Math.max(0, Math.round(Number(planRepInc) || 0)),
+        rest_seconds: Math.max(0, Math.round(Number(planRest) || 0)),
       });
 
       setPlanName('');
@@ -150,6 +157,7 @@ function App() {
       setPlanWeight('0');
       setPlanWeightInc('0');
       setPlanRepInc('0');
+      setPlanRest('90');
       loadPlans();
       alert(`Plan "${planName}" created!`);
     } catch (err) {
@@ -160,6 +168,8 @@ function App() {
   // ── Workout Session ───────────────────────────────────────────────────────
   const resetSession = () => {
     setSessionState('idle');
+    setRestRemaining(0);
+    setGetReadyRemaining(0);
     setCompletedSets([]);
     setCurrentSet(1);
     setLiveReps(0);
@@ -196,8 +206,56 @@ function App() {
     } else {
       setCurrentSet(s => s + 1);
       setCameraResetKey(k => k + 1); // reset counter for next set
+      // Rest instead of leaving the camera live and counting.
+      setRestRemaining(selectedPlan.rest_seconds ?? 90);
+      setSessionState('resting');
     }
   };
+
+  // Tick rest down to zero and stop there. Hitting zero does NOT start the
+  // next set -- the user taps when they are actually ready.
+  useEffect(() => {
+    if (sessionState !== 'resting' || restRemaining <= 0) return;
+    const id = setInterval(() => setRestRemaining(r => (r > 0 ? r - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [sessionState, restRemaining]);
+
+  // One tone the moment rest runs out.
+  useEffect(() => {
+    if (sessionState === 'resting' && restRemaining === 0) {
+      beep({ frequency: 660, duration: 0.3 });
+    }
+  }, [sessionState, restRemaining]);
+
+  const beginGetReady = () => {
+    primeAudio();
+    setGetReadyRemaining(5);
+    setSessionState('getready');
+  };
+
+  const addRestTime = (seconds) => setRestRemaining(r => Math.max(0, r + seconds));
+
+  // Lead-in. The camera mounts and warms during this, so the set starts
+  // against a live feed rather than a cold one.
+  useEffect(() => {
+    if (sessionState !== 'getready') return;
+
+    // Everything happens inside the timer callback: transitioning straight
+    // from the effect body would be a synchronous setState in an effect.
+    const id = setTimeout(() => {
+      if (getReadyRemaining <= 1) {
+        // Throw away whatever the warming camera saw before you were set.
+        setLiveReps(0);
+        setCameraResetKey(k => k + 1);
+        setSessionState('active');
+        beep({ frequency: 1320, duration: 0.25 });
+      } else {
+        setGetReadyRemaining(n => n - 1);
+        beep({ frequency: 880, duration: 0.1 });
+      }
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [sessionState, getReadyRemaining]);
 
   const finishWorkout = async () => {
     try {
@@ -304,7 +362,8 @@ function App() {
 
         {/* Kept mounted (merely hidden) while a session is active: unmounting
             would tear down the camera and reset the rep counter mid-set. */}
-        {(activeTab === 'counter' || sessionState === 'active') && (
+        {(activeTab === 'counter' || sessionState === 'active'
+          || sessionState === 'resting' || sessionState === 'getready') && (
           <div hidden={activeTab !== 'counter'}>
           <WorkoutTab
             plans={plans}
@@ -326,6 +385,10 @@ function App() {
             confirmProgression={confirmProgression}
             skipProgression={skipProgression}
             cancelSession={cancelSession}
+            restRemaining={restRemaining}
+            getReadyRemaining={getReadyRemaining}
+            beginGetReady={beginGetReady}
+            addRestTime={addRestTime}
           />
           </div>
         )}
@@ -346,6 +409,8 @@ function App() {
             planWeightInc={planWeightInc}
             setPlanWeightInc={setPlanWeightInc}
             planRepInc={planRepInc}
+            planRest={planRest}
+            setPlanRest={setPlanRest}
             setPlanRepInc={setPlanRepInc}
             handleCreatePlan={handleCreatePlan}
             onStartPlan={onStartPlan}
