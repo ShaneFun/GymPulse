@@ -859,3 +859,24 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   background: var(--accent);
   color: var(--accent-ink);
 }
+
+/* ─── Plan builder (exercise list in the create form) ─── */
+/* One card per exercise queued in a plan being built: a summary header
+   (figure, name, targets) over the same editable fields used elsewhere. */
+.plan-exercise-card {
+  background: var(--surface-2);
+  border-radius: var(--r-inner);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.plan-exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.plan-exercise-name { font-size: 15px; font-weight: 600; }
+.plan-exercise-meta { font-size: 13px; color: var(--text-dim); margin-top: 2px; }

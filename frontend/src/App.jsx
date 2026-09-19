@@ -35,13 +35,9 @@ function App() {
   // ── Plan Tab ──
   const [plans, setPlans] = useState([]); // list of {id, program_id, exercise_name, target_sets, target_reps, target_weight, week}
   const [planName, setPlanName] = useState('');
-  const [planExercise, setPlanExercise] = useState('bicep_curl');
-  const [planSets, setPlanSets] = useState('');
-  const [planReps, setPlanReps] = useState('');
-  const [planWeight, setPlanWeight] = useState('0');
-  const [planWeightInc, setPlanWeightInc] = useState('0');
-  const [planRepInc, setPlanRepInc] = useState('0');
-  const [planRest, setPlanRest] = useState('90');
+  const [planExerciseRest, setPlanExerciseRest] = useState('180');
+  // Each entry is one exercise in the plan being built.
+  const [planExercises, setPlanExercises] = useState([]);
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
@@ -150,37 +146,29 @@ function App() {
   // ── Plan Creation ─────────────────────────────────────────────────────────
   const handleCreatePlan = async (e) => {
     e.preventDefault();
-    if (!planName.trim() || !planSets || !planReps) {
-      alert('Please fill in all fields');
-      return;
-    }
-    try {
-      // Create a program with the plan name, then add one schedule
-      const progRes = await fitnessApi.createProgram(planName.trim());
-      const programId = progRes.data?.data?.id;
-      if (!programId) throw new Error('Could not create plan');
+    if (!planName.trim()) { alert('Give the plan a name'); return; }
+    if (planExercises.length === 0) { alert('Add at least one exercise'); return; }
 
-      await fitnessApi.createSchedule({
-        program_id: programId,
-        week: 1,
-        exercise_name: planExercise,
-        target_weight: parseFloat(planWeight) || 0,
-        target_sets: parseInt(planSets),
-        target_reps: parseInt(planReps),
-        weight_increment: Math.max(0, Number(planWeightInc) || 0),
-        rep_increment: Math.max(0, Math.round(Number(planRepInc) || 0)),
-        rest_seconds: Math.max(0, Math.round(Number(planRest) || 0)),
+    try {
+      await fitnessApi.createPlan({
+        name: planName.trim(),
+        exercise_rest_seconds: Math.max(0, Math.round(Number(planExerciseRest) || 0)),
+        exercises: planExercises.map(ex => ({
+          exercise_name: ex.exerciseName,
+          target_sets: Math.max(1, Math.round(Number(ex.sets) || 0)),
+          target_reps: Math.max(1, Math.round(Number(ex.reps) || 0)),
+          target_weight: Math.max(0, Number(ex.weight) || 0),
+          rest_seconds: Math.max(0, Math.round(Number(ex.rest) || 0)),
+          weight_increment: Math.max(0, Number(ex.weightInc) || 0),
+          rep_increment: Math.max(0, Math.round(Number(ex.repInc) || 0)),
+        })),
       });
 
       setPlanName('');
-      setPlanSets('');
-      setPlanReps('');
-      setPlanWeight('0');
-      setPlanWeightInc('0');
-      setPlanRepInc('0');
-      setPlanRest('90');
+      setPlanExerciseRest('180');
+      setPlanExercises([]);
       loadPlans();
-      alert(`Plan "${planName}" created!`);
+      alert('Plan created!');
     } catch (err) {
       alert('Error creating plan: ' + err.message);
     }
@@ -419,20 +407,10 @@ function App() {
             plans={plans}
             planName={planName}
             setPlanName={setPlanName}
-            planExercise={planExercise}
-            setPlanExercise={setPlanExercise}
-            planSets={planSets}
-            setPlanSets={setPlanSets}
-            planReps={planReps}
-            setPlanReps={setPlanReps}
-            planWeight={planWeight}
-            setPlanWeight={setPlanWeight}
-            planWeightInc={planWeightInc}
-            setPlanWeightInc={setPlanWeightInc}
-            planRepInc={planRepInc}
-            planRest={planRest}
-            setPlanRest={setPlanRest}
-            setPlanRepInc={setPlanRepInc}
+            planExerciseRest={planExerciseRest}
+            setPlanExerciseRest={setPlanExerciseRest}
+            planExercises={planExercises}
+            setPlanExercises={setPlanExercises}
             handleCreatePlan={handleCreatePlan}
             onStartPlan={onStartPlan}
           />
