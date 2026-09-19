@@ -1,18 +1,24 @@
+import { useRef, useState } from 'react';
 import { Plus, ChevronRight, ClipboardList } from 'lucide-react';
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
+import ExerciseFigure from '../components/ExerciseFigure';
+import ExercisePicker from '../components/ExercisePicker';
 import { formatWeight } from '../lib/format';
-
-// ── Constants ───────────────────────────────────────────────────────────────
-const EXERCISE_OPTIONS = Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => ({
-  key,
-  label: cfg.label,
-}));
 
 function PlanTab({
   plans, planName, setPlanName, planExercise, setPlanExercise, planSets, setPlanSets,
   planReps, setPlanReps, planWeight, setPlanWeight, planWeightInc, setPlanWeightInc,
   planRepInc, setPlanRepInc, handleCreatePlan, onStartPlan,
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const exerciseTriggerRef = useRef(null);
+  const selectedLabel = EXERCISE_CONFIGS[planExercise]?.label || planExercise;
+
+  const closePicker = () => {
+    setPickerOpen(false);
+    exerciseTriggerRef.current?.focus();
+  };
+
   return (
     <div>
       <h1 className="screen-heading">Plan</h1>
@@ -30,11 +36,18 @@ function PlanTab({
           </div>
           <div className="input-group">
             <label className="label">Exercise</label>
-            <select value={planExercise} onChange={e => setPlanExercise(e.target.value)}>
-              {EXERCISE_OPTIONS.map(({ key, label }) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
+            <button
+              type="button"
+              className="exercise-trigger"
+              onClick={() => setPickerOpen(true)}
+              ref={exerciseTriggerRef}
+            >
+              <span className="exercise-trigger-info">
+                <ExerciseFigure exercise={planExercise} label={selectedLabel} size={32} />
+                <span>{selectedLabel}</span>
+              </span>
+              <ChevronRight size={20} strokeWidth={1.5} />
+            </button>
           </div>
           <div className="field-row input-group">
             <div>
@@ -91,6 +104,14 @@ function PlanTab({
             </button>
           </div>
         ))
+      )}
+
+      {pickerOpen && (
+        <ExercisePicker
+          value={planExercise}
+          onSelect={setPlanExercise}
+          onClose={closePicker}
+        />
       )}
     </div>
   );

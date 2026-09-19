@@ -457,3 +457,105 @@ input:focus-visible, select:focus-visible {
 .card + .set-chips,
 .set-chips { margin-bottom: 12px; }
 .stack > * + * { margin-top: 12px; }
+
+/* ─── Exercise trigger (opens the full-screen picker) ─── */
+.exercise-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-inner);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.exercise-trigger:active { border-color: var(--accent); }
+
+.exercise-trigger-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ─── Exercise picker (full-screen overlay) ─── */
+.picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+}
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  flex: 0 0 auto;
+}
+
+.picker-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.picker-grid {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 4px 20px 32px;
+}
+
+.exercise-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 12px;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.exercise-card:active { transform: scale(0.98); }
+
+.exercise-card.selected { border-color: var(--accent); }
+
+.exercise-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.exercise-card-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: var(--r-pill);
+}
