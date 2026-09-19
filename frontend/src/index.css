@@ -448,3 +448,10 @@ input:focus-visible, select:focus-visible {
   white-space: nowrap;
   border: 0;
 }
+
+/* ─── Stacking ─── */
+.card-row + .card-row { margin-top: 12px; }
+.set-chips + .btn-row,
+.card + .set-chips,
+.set-chips { margin-bottom: 12px; }
+.stack > * + * { margin-top: 12px; }
