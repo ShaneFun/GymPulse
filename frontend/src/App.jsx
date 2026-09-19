@@ -26,6 +26,7 @@ const TABS = [
 // ── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const { session, loading } = useAuth();
+  const userId = session?.user?.id ?? null;
 
   // Navigation
   const [activeTab, setActiveTab] = useState('counter'); // 'counter' | 'plan' | 'progress' | 'me'
@@ -58,9 +59,10 @@ function App() {
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!userId) return;
     loadPlans();
     loadHistory();
-  }, []);
+  }, [userId]);
 
   const loadPlans = async () => {
     try {
