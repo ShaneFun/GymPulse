@@ -103,7 +103,9 @@ function PlanTab({
             <div>
               <div className="row-title">{p.programName} · Week {p.week}</div>
               <div className="row-sub">
-                {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
+                {p.exercises.length === 1
+                  ? `${EXERCISE_CONFIGS[p.exercises[0].exercise_name]?.label || p.exercises[0].exercise_name} · ${p.exercises[0].target_sets}×${p.exercises[0].target_reps}${p.exercises[0].target_weight > 0 ? ` @ ${formatWeight(p.exercises[0].target_weight)}kg` : ''}`
+                  : p.exercises.map(ex => EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name).join(' · ')}
               </div>
             </div>
             <button className="icon-btn" onClick={() => onStartPlan(p)}>

@@ -87,9 +87,7 @@ function WorkoutTab({
               <div className="plan-grid">
                 {plans.map((p) => {
                   const selected = selectedPlan?.id === p.id;
-                  // A list, because a plan will be able to hold several
-                  // exercises later; today it is always exactly one.
-                  const exercises = [p.exercise_name];
+                  const exercises = p.exercises;
                   return (
                     <button
                       type="button"
@@ -99,11 +97,11 @@ function WorkoutTab({
                       aria-pressed={selected}
                     >
                       <div className="plan-card-figures">
-                        {exercises.map((name) => (
+                        {exercises.map((ex) => (
                           <ExerciseFigure
-                            key={name}
-                            exercise={name}
-                            label={EXERCISE_CONFIGS[name]?.label || name}
+                            key={ex.id}
+                            exercise={ex.exercise_name}
+                            label={EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name}
                             size={56}
                           />
                         ))}
@@ -111,8 +109,14 @@ function WorkoutTab({
                       <div className="plan-card-name">{p.programName}</div>
                       <div className="plan-card-meta">Week {p.week}</div>
                       <div className="plan-card-target tnum">
-                        {p.target_sets}×{p.target_reps}
-                        {p.target_weight > 0 ? ` · ${formatWeight(p.target_weight)}kg` : ''}
+                        {exercises.length === 1
+                          ? (
+                            <>
+                              {exercises[0].target_sets}×{exercises[0].target_reps}
+                              {exercises[0].target_weight > 0 ? ` · ${formatWeight(exercises[0].target_weight)}kg` : ''}
+                            </>
+                          )
+                          : `${exercises.length} exercises`}
                       </div>
                       {selected && (
                         <span className="plan-card-check" aria-hidden="true">

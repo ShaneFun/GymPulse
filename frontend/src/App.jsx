@@ -75,19 +75,40 @@ function App() {
     try {
       const res = await fitnessApi.getPrograms();
       const programs = res.data.data || [];
-      // For each program, fetch its schedules — each schedule IS a plan
-      const allSchedules = await Promise.all(
+
+      const perProgram = await Promise.all(
         programs.map(p =>
-          fitnessApi.getSchedules(p.id).then(r =>
-            (r.data.data || []).map(s => ({ ...s, programName: p.name }))
-          )
+          fitnessApi.getSchedules(p.id).then(r => ({ program: p, schedules: r.data.data || [] }))
         )
       );
-      setPlans(
-        allSchedules.flat().sort(
-          (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
-        )
+
+      // A plan is every exercise a program holds in one week, so
+      // (programId, week) is its identity — not a schedule id.
+      const grouped = [];
+      for (const { program, schedules } of perProgram) {
+        const byWeek = new Map();
+        for (const s of schedules) {
+          if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+          byWeek.get(s.week).push(s);
+        }
+        for (const [week, exercises] of byWeek) {
+          grouped.push({
+            id: `${program.id}-${week}`,
+            programId: program.id,
+            programName: program.name,
+            week,
+            exerciseRestSeconds: program.exercise_rest_seconds ?? 180,
+            exercises: exercises.slice().sort(
+              (a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))
+            ),
+          });
+        }
+      }
+
+      grouped.sort(
+        (a, b) => a.programName.localeCompare(b.programName) || a.week - b.week
       );
+      setPlans(grouped);
     } catch (err) {
       console.error('loadPlans:', err);
     }
