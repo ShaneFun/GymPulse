@@ -356,6 +356,10 @@ input:focus-visible, select:focus-visible {
   color: var(--text-dim);
 }
 
+/* Nested inside a tappable .row (the Me tab's Photo row): the row itself
+   already provides spacing, so no extra bottom margin is needed. */
+.row .avatar-row { margin-bottom: 0; }
+
 /* ─── List rows ─── */
 .row {
   display: flex;
@@ -371,6 +375,23 @@ input:focus-visible, select:focus-visible {
 
 .row-title { font-size: 15px; font-weight: 600; }
 .row-sub   { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+/* .row rendered as a <button> for tappable rows (e.g. Me tab profile
+   fields): resets native button chrome to match the read-only .row look,
+   plus a pressed/disabled state to match .btn's tactile feedback. */
+button.row {
+  width: 100%;
+  border: none;
+  background: var(--surface);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+  touch-action: manipulation;
+}
+
+button.row:active { transform: scale(0.99); }
+button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 
 /* ─── Empty state ─── */
 .empty {
@@ -567,6 +588,14 @@ input:focus-visible, select:focus-visible {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.01em;
+}
+
+/* Generic scrollable body for a picker overlay that isn't a grid of cards
+   (e.g. FieldEditor's single-input form). */
+.picker-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 20px 32px;
 }
 
 .picker-grid {

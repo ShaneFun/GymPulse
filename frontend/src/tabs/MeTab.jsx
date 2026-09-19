@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, LogOut, User } from 'lucide-react';
+import { Camera, ChevronRight, LogOut, User } from 'lucide-react';
 import { formatWeight } from '../lib/format';
 import { fitnessApi } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { avatarUrl, uploadAvatar } from '../lib/avatar';
+import FieldEditor from '../components/FieldEditor';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
@@ -47,13 +48,41 @@ const personalBests = (history) => {
   return Object.entries(best).sort((a, b) => b[1] - a[1]);
 };
 
-// Server fields as edited by the form; birth_year is kept as a string here
-// so an empty input can be distinguished from a real year.
+// Server fields as edited via FieldEditor; birth_year is kept as a string
+// here so an empty input can be distinguished from a real year.
 const fieldsFromProfile = (profile) => ({
   displayName: profile?.display_name || '',
   phone: profile?.phone || '',
   birthYear: profile?.birth_year != null ? String(profile.birth_year) : '',
 });
+
+// One entry per editable row: how to present it in FieldEditor, and how to
+// turn its draft string back into a PUT /profile payload. Each save sends
+// only its own key — the backend uses exclude_unset, so the other fields
+// are left untouched.
+const FIELDS = {
+  displayName: {
+    apiKey: 'display_name',
+    label: 'Name',
+    inputType: 'text',
+    inputProps: { autoComplete: 'name', placeholder: 'Add your name' },
+    toPayloadValue: (v) => (v.trim() ? v.trim() : null),
+  },
+  phone: {
+    apiKey: 'phone',
+    label: 'Phone',
+    inputType: 'tel',
+    inputProps: { autoComplete: 'tel', inputMode: 'tel', placeholder: 'Add a phone number' },
+    toPayloadValue: (v) => (v.trim() ? v.trim() : null),
+  },
+  birthYear: {
+    apiKey: 'birth_year',
+    label: 'Year of birth',
+    inputType: 'number',
+    inputProps: { min: '1900', max: '2100', placeholder: 'Add your year of birth' },
+    toPayloadValue: (v) => (v.trim() ? parseInt(v, 10) : null),
+  },
+};
 
 function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
   const { user, signOut } = useAuth();
@@ -61,18 +90,19 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
   const totalRepsSum = workoutHistory.reduce((a, log) => a + totalReps(log), 0);
 
   const [profile, setProfile] = useState(null);
-  const [displayName, setDisplayName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [birthYear, setBirthYear] = useState('');
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
+  const [editingField, setEditingField] = useState(null);
+  const [fieldSaving, setFieldSaving] = useState(false);
 
   const [avatarPath, setAvatarPath] = useState(null);
   const [avatarSrc, setAvatarSrc] = useState(null);
   const [avatarError, setAvatarError] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef(null);
+
+  const nameRowRef = useRef(null);
+  const phoneRowRef = useRef(null);
+  const birthYearRowRef = useRef(null);
+  const rowRefs = { displayName: nameRowRef, phone: phoneRowRef, birthYear: birthYearRowRef };
 
   useEffect(() => {
     let active = true;
@@ -81,14 +111,9 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
         if (!active) return;
         const data = res.data?.data || {};
         setProfile(data);
-        const fields = fieldsFromProfile(data);
-        setDisplayName(fields.displayName);
-        setPhone(fields.phone);
-        setBirthYear(fields.birthYear);
         setAvatarPath(data.avatar_path || null);
       })
-      .catch((err) => console.error('getProfile:', err))
-      .finally(() => { if (active) setProfileLoaded(true); });
+      .catch((err) => console.error('getProfile:', err));
     return () => { active = false; };
   }, []);
 
@@ -101,36 +126,29 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
     return () => { active = false; };
   }, [avatarPath]);
 
-  const savedFields = fieldsFromProfile(profile);
-  const isDirty = profileLoaded && (
-    displayName !== savedFields.displayName ||
-    phone !== savedFields.phone ||
-    birthYear !== savedFields.birthYear
-  );
+  const closeFieldEditor = () => {
+    const triggerRef = rowRefs[editingField];
+    setEditingField(null);
+    triggerRef?.current?.focus();
+  };
 
-  const handleSaveProfile = async () => {
-    setSaving(true);
-    setSaveStatus('');
+  // Called by FieldEditor's onSave; a thrown/rejected error is caught there
+  // and shown inline, so the editor stays open on failure instead of
+  // closing silently.
+  const handleFieldSave = async (nextValue) => {
+    const field = FIELDS[editingField];
+    if (!field) return;
+    setFieldSaving(true);
     try {
-      const res = await fitnessApi.updateProfile({
-        display_name: displayName.trim() ? displayName.trim() : null,
-        phone: phone.trim() ? phone.trim() : null,
-        birth_year: birthYear.trim() ? parseInt(birthYear, 10) : null,
-      });
+      const res = await fitnessApi.updateProfile({ [field.apiKey]: field.toPayloadValue(nextValue) });
       const data = res.data?.data || {};
       setProfile(data);
-      const fields = fieldsFromProfile(data);
-      setDisplayName(fields.displayName);
-      setPhone(fields.phone);
-      setBirthYear(fields.birthYear);
-      setSaveStatus('Saved');
-      setTimeout(() => setSaveStatus(''), 2000);
+      closeFieldEditor();
     } catch (err) {
       console.error('updateProfile:', err);
-      setSaveStatus('Error saving');
-      setTimeout(() => setSaveStatus(''), 2000);
+      throw err;
     } finally {
-      setSaving(false);
+      setFieldSaving(false);
     }
   };
 
@@ -179,6 +197,8 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
       setUploadingAvatar(false);
     }
   };
+
+  const editingConfig = editingField ? FIELDS[editingField] : null;
 
   return (
     <div>
@@ -234,15 +254,12 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
 
       <div className="section-heading">Account</div>
 
-      <div className="row">
-        <div>
-          <div className="row-title">Email</div>
-          <div className="row-sub">{user.email}</div>
-        </div>
-      </div>
-      <p className="dim field-note">Your email can&rsquo;t be changed here.</p>
-
-      <div className="card">
+      <button
+        type="button"
+        className="row"
+        onClick={() => avatarInputRef.current?.click()}
+        disabled={uploadingAvatar}
+      >
         <div className="avatar-row">
           {avatarSrc ? (
             <img src={avatarSrc} alt="Your avatar" className="avatar" />
@@ -251,72 +268,72 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
               <User size={28} strokeWidth={1.5} />
             </div>
           )}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => avatarInputRef.current?.click()}
-            disabled={uploadingAvatar}
-          >
-            {uploadingAvatar ? 'Uploading…' : 'Change photo'}
-          </button>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleAvatarChange}
-            className="sr-only"
-          />
+          <div>
+            <div className="row-title">Photo</div>
+            <div className="row-sub">{uploadingAvatar ? 'Uploading…' : 'Tap to change'}</div>
+          </div>
         </div>
-        {avatarError && <p className="dim field-note">{avatarError}</p>}
+        <ChevronRight className="dim" size={20} strokeWidth={1.5} />
+      </button>
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleAvatarChange}
+        className="sr-only"
+      />
+      {avatarError && <p className="dim field-note">{avatarError}</p>}
 
-        <div className="input-group">
-          <label className="label" htmlFor="me-display-name">Display name</label>
-          <input
-            id="me-display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Add a display name"
-          />
+      <button type="button" className="row" onClick={() => setEditingField('displayName')} ref={nameRowRef}>
+        <div>
+          <div className="row-title">Name</div>
+          <div className="row-sub">{profile?.display_name || 'Add your name'}</div>
         </div>
+        <ChevronRight className="dim" size={20} strokeWidth={1.5} />
+      </button>
 
-        <div className="input-group">
-          <label className="label" htmlFor="me-phone">Phone</label>
-          <input
-            id="me-phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Add a phone number"
-          />
+      <div className="row">
+        <div>
+          <div className="row-title">Email</div>
+          <div className="row-sub">{user.email}</div>
         </div>
-
-        <div className="input-group">
-          <label className="label" htmlFor="me-birth-year">Birth year</label>
-          <input
-            id="me-birth-year"
-            type="number"
-            min="1900"
-            max="2100"
-            value={birthYear}
-            onChange={(e) => setBirthYear(e.target.value)}
-            placeholder="Add a birth year"
-          />
-        </div>
-
-        <button
-          className="btn btn-accent btn-block"
-          onClick={handleSaveProfile}
-          disabled={saving || !isDirty}
-        >
-          {saving ? 'Saving…' : (saveStatus || 'Save')}
-        </button>
       </div>
+      <p className="dim field-note">Your email can&rsquo;t be changed here.</p>
+
+      <button type="button" className="row" onClick={() => setEditingField('phone')} ref={phoneRowRef}>
+        <div>
+          <div className="row-title">Phone</div>
+          <div className="row-sub">{profile?.phone || 'Add a phone number'}</div>
+        </div>
+        <ChevronRight className="dim" size={20} strokeWidth={1.5} />
+      </button>
+
+      <button type="button" className="row" onClick={() => setEditingField('birthYear')} ref={birthYearRowRef}>
+        <div>
+          <div className="row-title">Year of birth</div>
+          <div className="row-sub">
+            {profile?.birth_year != null ? String(profile.birth_year) : 'Add your year of birth'}
+          </div>
+        </div>
+        <ChevronRight className="dim" size={20} strokeWidth={1.5} />
+      </button>
 
       <button className="btn btn-secondary btn-block" onClick={signOut}>
         <LogOut size={18} strokeWidth={1.5} />
         Sign out
       </button>
+
+      {editingConfig && (
+        <FieldEditor
+          label={editingConfig.label}
+          value={fieldsFromProfile(profile)[editingField]}
+          inputType={editingConfig.inputType}
+          inputProps={editingConfig.inputProps}
+          onSave={handleFieldSave}
+          onClose={closeFieldEditor}
+          saving={fieldSaving}
+        />
+      )}
     </div>
   );
 }
