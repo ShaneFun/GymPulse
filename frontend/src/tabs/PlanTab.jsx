@@ -1,3 +1,4 @@
+import { Plus, ChevronRight, ClipboardList } from 'lucide-react';
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
 import { formatWeight } from '../lib/format';
 
@@ -14,11 +15,12 @@ function PlanTab({
 }) {
   return (
     <div>
-      <p className="section-label">Create Workout Plan</p>
+      <h1 className="screen-heading">Plan</h1>
+
       <div className="card">
         <form onSubmit={handleCreatePlan}>
           <div className="input-group">
-            <label>Plan Name</label>
+            <label className="label">Plan Name</label>
             <input
               type="text"
               placeholder="e.g., Morning Push Day"
@@ -27,70 +29,68 @@ function PlanTab({
             />
           </div>
           <div className="input-group">
-            <label>Exercise</label>
+            <label className="label">Exercise</label>
             <select value={planExercise} onChange={e => setPlanExercise(e.target.value)}>
               {EXERCISE_OPTIONS.map(({ key, label }) => (
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
           </div>
-          <div style={{ display: 'flex', gap: 10 }} className="input-group">
-            <div style={{ flex: 1 }}>
-              <label>Sets</label>
+          <div className="field-row input-group">
+            <div>
+              <label className="label">Sets</label>
               <input type="number" min="1" placeholder="5" value={planSets} onChange={e => setPlanSets(e.target.value)} />
             </div>
-            <div style={{ flex: 1 }}>
-              <label>Reps / Set</label>
+            <div>
+              <label className="label">Reps / Set</label>
               <input type="number" min="1" placeholder="10" value={planReps} onChange={e => setPlanReps(e.target.value)} />
             </div>
-            <div style={{ flex: 1 }}>
-              <label>Weight (kg)</label>
+            <div>
+              <label className="label">Weight (kg)</label>
               <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
             </div>
           </div>
-          <div className="input-group">
-            <label>Progression — on a passed workout, increase next week by</label>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <label>Weight (kg)</label>
-                <input type="number" min="0" step="0.5" placeholder="0" value={planWeightInc} onChange={e => setPlanWeightInc(e.target.value)} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label>Reps / Set</label>
-                <input type="number" min="0" step="1" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
-              </div>
+
+          <div className="section-heading">Progression</div>
+          <p className="dim">On a passed workout, increase next week by</p>
+          <div className="field-row input-group">
+            <div>
+              <label className="label">Weight (kg)</label>
+              <input type="number" min="0" step="0.5" placeholder="0" value={planWeightInc} onChange={e => setPlanWeightInc(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Reps / Set</label>
+              <input type="number" min="0" step="1" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary">+ Create Plan</button>
+
+          <button type="submit" className="btn btn-accent btn-block">
+            <Plus size={18} strokeWidth={1.5} />
+            Create Plan
+          </button>
         </form>
       </div>
 
-      {plans.length > 0 && (
-        <>
-          <p className="section-label">My Plans</p>
-          {plans.map(p => (
-            <div key={p.id} className="log-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                  {p.programName} · Week {p.week}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
-                </div>
+      <div className="section-heading">My Plans</div>
+      {plans.length === 0 ? (
+        <div className="empty">
+          <ClipboardList size={32} strokeWidth={1.5} />
+          <p>No plans yet. Create one above to get started.</p>
+        </div>
+      ) : (
+        plans.map(p => (
+          <div key={p.id} className="row">
+            <div>
+              <div className="row-title">{p.programName} · Week {p.week}</div>
+              <div className="row-sub">
+                {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
               </div>
-              <button
-                onClick={() => onStartPlan(p)}
-                style={{
-                  background: '#6366f1', color: '#fff', border: 'none',
-                  borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
-                  fontSize: '0.8rem', fontWeight: 700,
-                }}
-              >
-                Start →
-              </button>
             </div>
-          ))}
-        </>
+            <button className="icon-btn" onClick={() => onStartPlan(p)}>
+              <ChevronRight size={20} strokeWidth={1.5} />
+            </button>
+          </div>
+        ))
       )}
     </div>
   );
