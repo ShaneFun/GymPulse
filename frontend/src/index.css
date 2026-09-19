@@ -488,6 +488,8 @@ input:focus-visible, select:focus-visible {
 .login-error {
   margin: -4px 0 16px;
   font-size: 13px;
+  font-weight: 500;
+  color: var(--fail);
 }
 
 /* ─── Motion & accessibility ─── */

@@ -51,7 +51,7 @@ function LoginScreen() {
             />
           </div>
 
-          {error && <p className="dim login-error">{error}</p>}
+          {error && <p className="login-error" role="alert">{error}</p>}
 
           <button type="submit" className="btn btn-accent btn-block" disabled={submitting}>
             {submitting ? 'Signing in…' : 'Sign in'}
