@@ -13,6 +13,13 @@ export function primeAudio() {
   if (!AudioCtx) return;
 
   try {
+    // Without this an iPhone's physical silent switch mutes Web Audio
+    // entirely — the most likely reason a beep "does nothing" on a phone.
+    // Safari 16.4+; harmless where unsupported.
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch { /* not supported; fall through */ }
+
+  try {
     if (!ctx) ctx = new AudioCtx();
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   } catch {
@@ -21,7 +28,15 @@ export function primeAudio() {
 }
 
 export function beep({ frequency = 880, duration = 0.12 } = {}) {
-  if (!ctx || ctx.state !== 'running') return;
+  if (!ctx) return;
+
+  // A context can fall back to suspended (backgrounding the tab, iOS
+  // reclaiming audio). Nudge it and skip this tone rather than throwing.
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+    return;
+  }
+  if (ctx.state !== 'running') return;
 
   try {
     const osc = ctx.createOscillator();

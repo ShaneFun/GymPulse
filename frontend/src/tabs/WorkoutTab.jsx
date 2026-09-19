@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy } from 'lucide-react';
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import { formatWeight } from '../lib/format';
-import { beep } from '../lib/beep';
+import { beep, primeAudio } from '../lib/beep';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -155,7 +155,11 @@ function WorkoutTab({
                 <button
                   type="button"
                   className="icon-btn"
-                  onClick={cameraControls.isCameraActive ? cameraControls.stopCamera : cameraControls.startCamera}
+                  onClick={() => {
+                    primeAudio();
+                    if (cameraControls.isCameraActive) cameraControls.stopCamera();
+                    else cameraControls.startCamera();
+                  }}
                   aria-label={cameraControls.isCameraActive ? 'Stop camera' : 'Start camera'}
                 >
                   {cameraControls.isCameraActive
@@ -166,7 +170,7 @@ function WorkoutTab({
                 <button
                   type="button"
                   className="icon-btn-primary"
-                  onClick={doneSet}
+                  onClick={() => { primeAudio(); doneSet(); }}
                   disabled={liveReps < 1}
                   aria-label={`Done set, ${liveReps} reps`}
                 >

@@ -319,6 +319,11 @@ function AICameraCounter({
   const resetCount = () => {
     repCountRef.current = 0;
     stageRef.current = null;
+    angleHistoryRef.current = [];
+    // Tell the parent too: without this the camera's count goes to zero while
+    // the displayed count (and the Done Set button's enabled state) keep the
+    // stale value.
+    onRepUpdateRef.current?.(0);
   };
 
   // Hand the camera's controls up to the parent (WorkoutTab) so it can
