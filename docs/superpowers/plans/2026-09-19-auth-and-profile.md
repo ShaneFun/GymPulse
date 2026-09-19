@@ -558,6 +558,17 @@ If this errors, some program still has a null `user_id` — find it with `select
 
 - [ ] **Step 2: Replace every permissive policy**
 
+**Enable RLS first.** Creating a policy does NOT switch row-level security on — they are separate operations, and a policy on a table with RLS disabled is silently inert. This actually happened: on the first run of this task, `programs`, `schedules` and `workout_logs` had RLS off, so all three stayed fully readable with the publishable key even after the correct policies were created. Only `profiles` was protected, because Task 1's SQL enabled it explicitly.
+
+```sql
+alter table public.programs     enable row level security;
+alter table public.schedules    enable row level security;
+alter table public.workout_logs enable row level security;
+alter table public.profiles     enable row level security;
+```
+
+Confirm with `select tablename, rowsecurity from pg_tables where schemaname = 'public';` — all four must read `true`. Then replace the policies:
+
 ```sql
 drop policy if exists gympulse_all on public.programs;
 drop policy if exists gympulse_all on public.schedules;
