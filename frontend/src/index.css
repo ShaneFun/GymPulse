@@ -435,6 +435,27 @@ input:focus-visible, select:focus-visible {
   color: var(--text-on-dark);
 }
 
+/* ─── Login screen ─── */
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 20px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.login-error {
+  margin: -4px 0 16px;
+  font-size: 13px;
+}
+
 /* ─── Motion & accessibility ─── */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

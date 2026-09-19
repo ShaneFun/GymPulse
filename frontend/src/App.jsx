@@ -10,6 +10,8 @@ import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
 import MeTab from './tabs/MeTab';
+import { useAuth } from './auth/AuthProvider';
+import LoginScreen from './auth/LoginScreen';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -23,6 +25,8 @@ const TABS = [
 
 // ── App ──────────────────────────────────────────────────────────────────────
 function App() {
+  const { session, loading } = useAuth();
+
   // Navigation
   const [activeTab, setActiveTab] = useState('counter'); // 'counter' | 'plan' | 'progress' | 'me'
 
@@ -283,6 +287,9 @@ function App() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) return <div className="empty">Loading…</div>;
+  if (!session) return <LoginScreen />;
+
   return (
     <div className="app-shell">
 
