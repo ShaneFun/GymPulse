@@ -63,20 +63,34 @@ def test_create_plan_rejects_an_empty_exercise_list(client, fake_db):
 
 
 def test_create_plan_removes_the_program_if_an_exercise_fails(client, fake_db, monkeypatch):
-    """A half-built plan is worse than none: the program must not survive."""
-    original_table = fake_db.table
+    """A half-built plan is worse than none: neither table may retain a row.
 
-    def explode_on_schedule_insert(name):
+    The second insert fails, not the first, so cleanup has to remove a
+    schedule row that already references the program -- the case that
+    actually happens in production.
+    """
+    original_table = fake_db.table
+    calls = {"n": 0}
+
+    def explode_on_second_schedule_insert(name):
         table = original_table(name)
         if name == "schedules":
-            def boom(_row):
-                raise RuntimeError("insert failed")
-            table.insert = boom
+            real_insert = table.insert
+
+            def maybe_boom(row):
+                calls["n"] += 1
+                if calls["n"] >= 2:
+                    raise RuntimeError("insert failed")
+                return real_insert(row)
+
+            table.insert = maybe_boom
         return table
 
-    monkeypatch.setattr(fake_db, "table", explode_on_schedule_insert)
+    monkeypatch.setattr(fake_db, "table", explode_on_second_schedule_insert)
 
     response = client.post("/plans", json=PLAN)
 
     assert response.status_code >= 400
+    assert calls["n"] == 2, "the first insert should have succeeded"
     assert original_table("programs").rows == []
+    assert original_table("schedules").rows == []

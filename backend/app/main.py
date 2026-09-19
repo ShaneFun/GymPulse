@@ -242,12 +242,19 @@ def create_plan(
     except Exception as e:
         # Roll back by hand: a program with no exercises is invisible in the
         # UI but real in the database, which is how the existing orphan row
-        # got there. Postgres cascades schedules on program delete.
+        # got there.
         if program_id is not None:
             try:
+                # Delete the children first rather than relying on the foreign
+                # key to cascade: the schema lives in the Supabase dashboard,
+                # so that behaviour is not verifiable from this repo and could
+                # change. Explicit deletion is correct either way.
+                db.table("schedules").delete().eq("program_id", program_id).execute()
                 db.table("programs").delete().eq("id", program_id).execute()
-            except Exception:
-                pass
+            except Exception as cleanup_error:
+                # The create already failed; report that, not this. Log it so a
+                # failed rollback is not completely invisible.
+                print(f"Plan rollback failed for program {program_id}: {cleanup_error}")
         if isinstance(e, HTTPException):
             raise
         raise _map_supabase_error(e)
