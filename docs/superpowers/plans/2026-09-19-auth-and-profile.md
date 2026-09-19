@@ -61,6 +61,13 @@ create policy gympulse_all on public.profiles for all using (true) with check (t
 
 Dashboard → Storage → New bucket. Name it `avatars`, leave **Public** switched OFF. Its access policies are added in Task 6.
 
+Set two limits on the bucket while you are there:
+
+- **File size limit:** `2MB`
+- **Allowed MIME types:** `image/png, image/jpeg, image/webp, image/gif`
+
+The frontend already checks type and size before uploading, but uploads go **direct to Storage**, bypassing the backend entirely — so that check is trivially bypassed and the bucket is the only place the limit is actually enforced.
+
 - [ ] **Step 3: Create the account**
 
 Dashboard → Authentication → Users → Add user. Use a real email and a password you will remember. **Leave signup enabled for now** — it gets closed in Task 6.
@@ -595,8 +602,13 @@ create policy own_avatars_write on storage.objects
   for insert with check (
     bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- `with check` as well as `using`: without it an UPDATE could move an object
+-- out of the owner's folder, since `using` only gates which rows are visible
+-- to the update, not where they may land.
 create policy own_avatars_update on storage.objects
   for update using (
+    bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (
     bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
 create policy own_avatars_delete on storage.objects
@@ -608,21 +620,38 @@ create policy own_avatars_delete on storage.objects
 
 Reload the app. Expected: still signed in, all three programs still listed, and creating a plan still works.
 
-- [ ] **Step 5: Verify as an anonymous caller**
+- [ ] **Step 5: Verify as an anonymous caller — this is the only step that proves the feature works**
 
-This is the test that proves the whole feature. In the SQL editor:
+Do NOT use the SQL editor for this. It runs with elevated rights, so `select count(*) from programs` still returns 3 there regardless of your policies; it proves nothing. Nor does a bare `curl` at the FastAPI port — that only exercises the backend's header check, and says nothing about any policy.
 
-```sql
-select count(*) from programs;
+The real test goes **straight to PostgREST with the anonymous key**, bypassing your backend entirely. That is exactly what an attacker holding the browser key would do. Substitute your project URL and publishable key:
+
+```bash
+KEY="<your publishable key>"
+URL="https://klldkzitusmrtgyvhkit.supabase.co/rest/v1"
+
+for t in programs schedules workout_logs profiles; do
+  printf "%-14s " "$t"
+  curl -s -H "apikey: $KEY" -H "Authorization: Bearer $KEY" "$URL/$t?select=*"
+  echo ""
+done
 ```
 
-The SQL editor runs with elevated rights, so this still returns 3 — that is expected and proves nothing. The real check is the app behaving correctly while a bare `curl http://127.0.0.1:8000/programs` returns 401, which Task 5 Step 6 already established.
+**Expected: `[]` for all four.** Anything else means a policy is wrong and your data is still readable by anyone holding that key.
+
+Before Task 6's policies were applied this same command returns all your rows — worth running it once beforehand so you can see the difference, and so you know the command itself works.
 
 - [ ] **Step 6: Close signup**
 
 Dashboard → Authentication → Providers → Email → turn **Enable signup** OFF.
 
 Confirm: signing out and attempting to register a new account fails.
+
+- [ ] **Step 7: Rotate the publishable key**
+
+The old key is in public git history (commit `7e63b45` among others) and must be assumed compromised. Dashboard → Settings → API → rotate the publishable/anon key, then update **both** `.env` files — the root one (`SUPABASE_KEY`) and `frontend/.env` (`VITE_SUPABASE_ANON_KEY`) — and restart both servers.
+
+Rotating before Step 5 is fine and arguably better; just make sure the key in your `.env` files and the one in the Step 5 command are the same.
 
 ---
 
