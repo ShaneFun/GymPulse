@@ -120,7 +120,29 @@ function AICameraCounter({
   useEffect(() => { onRepUpdateRef.current = onRepUpdate; }, [onRepUpdate]);
   useEffect(() => { onControlsRef.current = onControls; }, [onControls]);
 
-  // Sync exercise ref when dropdown changes
+  // exerciseLocked can change while mounted (a session moving to its next
+  // exercise, kept mounted so the camera survives the transition). Without
+  // resyncing, the camera keeps counting against the previous exercise's
+  // joint config, with nothing visibly wrong -- exercise 1 today is only
+  // correct because the active block happens to unmount during rest.
+  //
+  // This is done during render (the "adjusting state when a prop changes"
+  // pattern: https://react.dev/learn/you-might-not-need-an-effect), not in
+  // a useEffect -- this file already has one react-hooks/set-state-in-effect
+  // error below (setFeedback in the auto-start effect), and calling
+  // setExercise from another effect would add a second, near-identical
+  // violation. The comparison is tracked in state, not a ref: the lint
+  // config here (react-hooks v7, compiler-based) flags reading ref.current
+  // during render, so this follows React's own version of the pattern,
+  // which stores the previous prop in state for exactly this reason.
+  const [prevExerciseLocked, setPrevExerciseLocked] = useState(exerciseLocked);
+  if (exerciseLocked && exerciseLocked !== prevExerciseLocked) {
+    setPrevExerciseLocked(exerciseLocked);
+    setExercise(exerciseLocked);
+  }
+
+  // Sync exercise ref when the exercise changes, whether from the dropdown
+  // (uncontrolled mode) or from the exerciseLocked sync above.
   useEffect(() => {
     exerciseRef.current = exercise;
     stageRef.current = null;

@@ -4,6 +4,7 @@ import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import { formatWeight } from '../lib/format';
 import { say, beep, primeAudio } from '../lib/beep';
+import { isAdvancable } from '../lib/advancable';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -23,9 +24,9 @@ const formatClock = (totalSeconds) => {
 
 function WorkoutTab({
   plans, selectedPlan, setSelectedPlan, sessionState, currentSet, currentExercise, completedSets,
-  liveReps, setLiveReps, cameraResetKey, autoCamera, results,
-  advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
-  cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
+  completedByExercise, liveReps, setLiveReps, cameraResetKey, autoCamera, results,
+  advancing, saving, startSession, doneSet, finishWorkout, retryFailedLogs, confirmProgression,
+  skipProgression, cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
 
@@ -44,12 +45,8 @@ function WorkoutTab({
   // tell apart.
   const showExerciseLabel = (selectedPlan?.exercises?.length ?? 0) > 1;
 
-  // Exercises the Done screen can offer to progress: logged, passed, and with
-  // something to actually change next week. An exercise that failed stays on
-  // its current week even when its siblings advance.
-  const advancable = results.filter(o =>
-    o.logged && o.passed &&
-    ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
+  // Exercises the Done screen can offer to progress.
+  const advancable = results.filter(isAdvancable);
 
   // One beep per value, not per render: without this guard any re-render while
   // sitting on the same rep would retrigger the tone.
@@ -307,6 +304,33 @@ function WorkoutTab({
             )}
           </div>
 
+          {/* Pre-save summary: what you just did, visible before you commit
+              it (and even if you go on to Discard). */}
+          {results.length === 0 && selectedPlan.exercises.map((ex, i) => {
+            const reps = completedByExercise?.[i] ?? [];
+            if (reps.length === 0) return null; // never started; nothing to show
+            const label = EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name;
+            const total = reps.reduce((a, b) => a + b, 0);
+            return (
+              <div key={ex.id}>
+                <div className="row">
+                  <div>
+                    <div className="row-title">{label}</div>
+                    <div className="row-sub tnum">{reps.join(' · ')} &middot; {total} reps total</div>
+                  </div>
+                </div>
+                <div className="set-chips">
+                  {reps.map((r, si) => (
+                    <div key={si} className="set-chip set-chip-done">
+                      <div className="set-chip-label">Set {si + 1}</div>
+                      <div className="set-chip-value">{r}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
           {results.length > 0 && results.map((o) => {
             const label = EXERCISE_CONFIGS[o.exercise.exercise_name]?.label || o.exercise.exercise_name;
             return (
@@ -328,14 +352,28 @@ function WorkoutTab({
 
           {results.length === 0 && (
             <div className="btn-row">
-              <button className="btn btn-accent" onClick={finishWorkout}>
+              <button className="btn btn-accent" onClick={finishWorkout} disabled={saving}>
                 <Save size={18} strokeWidth={1.5} />
-                Save &amp; View Progress
+                {saving ? 'Saving…' : 'Save & View Progress'}
               </button>
-              <button className="btn btn-secondary" onClick={cancelSession}>
+              <button className="btn btn-secondary" onClick={cancelSession} disabled={saving}>
                 Discard
               </button>
             </div>
+          )}
+
+          {/* A failed log must never be a dead end: retry is the primary
+              action here so the data has somewhere to go besides being
+              discarded by every other exit on this screen. */}
+          {results.length > 0 && results.some(o => !o.logged) && (
+            <button
+              className="btn btn-accent btn-block"
+              onClick={retryFailedLogs}
+              disabled={saving}
+            >
+              <Save size={18} strokeWidth={1.5} />
+              {saving ? 'Retrying…' : 'Retry failed'}
+            </button>
           )}
 
           {advancable.length > 0 && (

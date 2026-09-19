@@ -7,7 +7,7 @@ import { formatWeight } from '../lib/format';
 
 function PlanTab({
   plans, planName, setPlanName, planExerciseRest, setPlanExerciseRest,
-  planExercises, setPlanExercises, handleCreatePlan, onStartPlan,
+  planExercises, setPlanExercises, handleCreatePlan, onStartPlan, creatingPlan,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const addExerciseBtnRef = useRef(null);
@@ -155,10 +155,10 @@ function PlanTab({
           <button
             type="submit"
             className="btn btn-accent btn-block"
-            disabled={planExercises.length === 0}
+            disabled={planExercises.length === 0 || creatingPlan}
           >
             <Plus size={18} strokeWidth={1.5} />
-            Create Plan
+            {creatingPlan ? 'Creating…' : 'Create Plan'}
           </button>
         </form>
       </div>

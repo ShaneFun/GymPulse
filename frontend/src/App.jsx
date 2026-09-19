@@ -7,6 +7,7 @@ import {
 } from 'chart.js';
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
 import { primeAudio, say } from './lib/beep';
+import { isAdvancable } from './lib/advancable';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -38,6 +39,7 @@ function App() {
   const [planExerciseRest, setPlanExerciseRest] = useState('180');
   // Each entry is one exercise in the plan being built.
   const [planExercises, setPlanExercises] = useState([]);
+  const [creatingPlan, setCreatingPlan] = useState(false); // in-flight guard for Create Plan
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
@@ -58,6 +60,7 @@ function App() {
   // Per-exercise outcomes from finishWorkout: [{ exercise, reps, passed, logged }]
   const [results, setResults] = useState([]);
   const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
+  const [saving, setSaving] = useState(false); // in-flight guard for Save & retry-failed-logs
 
   // Derived above their first use (this eslint config errors on
   // use-before-declaration for const arrow functions that reference them).
@@ -111,7 +114,7 @@ function App() {
       }
 
       grouped.sort(
-        (a, b) => a.programName.localeCompare(b.programName) || a.week - b.week
+        (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
       );
       setPlans(grouped);
     } catch (err) {
@@ -155,9 +158,22 @@ function App() {
   // ── Plan Creation ─────────────────────────────────────────────────────────
   const handleCreatePlan = async (e) => {
     e.preventDefault();
+    if (creatingPlan) return;
     if (!planName.trim()) { alert('Give the plan a name'); return; }
     if (planExercises.length === 0) { alert('Add at least one exercise'); return; }
 
+    for (const ex of planExercises) {
+      if (!ex.sets || Number(ex.sets) < 1) {
+        alert(`${ex.exerciseName}: sets must be at least 1`);
+        return;
+      }
+      if (!ex.reps || Number(ex.reps) < 1) {
+        alert(`${ex.exerciseName}: reps must be at least 1`);
+        return;
+      }
+    }
+
+    setCreatingPlan(true);
     try {
       await fitnessApi.createPlan({
         name: planName.trim(),
@@ -180,6 +196,8 @@ function App() {
       alert('Plan created!');
     } catch (err) {
       alert('Error creating plan: ' + err.message);
+    } finally {
+      setCreatingPlan(false);
     }
   };
 
@@ -288,48 +306,91 @@ function App() {
   }, [sessionState, getReadyRemaining]);
 
   const finishWorkout = async () => {
-    const stamp = new Date().toLocaleDateString();
-    const outcomes = [];
+    // Guard against a double tap: this now makes N sequential round trips
+    // (one per exercise), so the in-flight window can be seconds on slow
+    // wifi, and there is no dedup or delete on the backend -- a second tap
+    // would permanently write duplicate logs.
+    if (saving) return;
+    setSaving(true);
+    try {
+      const stamp = new Date().toLocaleDateString();
+      const outcomes = [];
 
-    for (let i = 0; i < selectedPlan.exercises.length; i++) {
-      const exercise = selectedPlan.exercises[i];
-      const reps = completedByExercise[i] ?? [];
-      if (reps.length === 0) continue; // never started; nothing to record
+      for (let i = 0; i < selectedPlan.exercises.length; i++) {
+        const exercise = selectedPlan.exercises[i];
+        const reps = completedByExercise[i] ?? [];
+        if (reps.length === 0) continue; // never started; nothing to record
 
-      try {
-        const res = await fitnessApi.logWorkout({
-          schedule_id: exercise.id,
-          log_name: `Session ${stamp}`,
-          actual_weight: exercise.target_weight,
-          actual_reps: reps,
-        });
-        outcomes.push({
-          exercise,
-          reps,
-          logged: true,
-          passed: res.data?.status_calculated === 'PASS',
-        });
-      } catch (err) {
-        console.error('logWorkout:', exercise.exercise_name, err);
-        outcomes.push({ exercise, reps, logged: false, passed: false });
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: exercise.target_weight,
+            actual_reps: reps,
+          });
+          outcomes.push({
+            exercise,
+            reps,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('logWorkout:', exercise.exercise_name, err);
+          outcomes.push({ exercise, reps, logged: false, passed: false });
+        }
       }
+
+      await loadHistory();
+      setResults(outcomes);
+
+      // Offer progression only for exercises that passed AND have something to
+      // progress by; an exercise that failed stays on its current week.
+      const anyFailed = outcomes.some(o => !o.logged);
+      const advancable = outcomes.filter(isAdvancable);
+
+      // Only leave automatically when there is nothing for the user to see or
+      // decide. A failed log has to stay on screen, or it reads as a success.
+      if (advancable.length === 0 && !anyFailed) {
+        resetSession();
+        setActiveTab('progress');
+      }
+    } finally {
+      setSaving(false);
     }
+  };
 
-    await loadHistory();
-    setResults(outcomes);
-
-    // Offer progression only for exercises that passed AND have something to
-    // progress by; an exercise that failed stays on its current week.
-    const anyFailed = outcomes.some(o => !o.logged);
-    const advancable = outcomes.filter(o =>
-      o.logged && o.passed &&
-      ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
-
-    // Only leave automatically when there is nothing for the user to see or
-    // decide. A failed log has to stay on screen, or it reads as a success.
-    if (advancable.length === 0 && !anyFailed) {
-      resetSession();
-      setActiveTab('progress');
+  // Re-post only the exercises that failed to log. Entries that already
+  // landed (`logged: true`) are left alone, so this can never double-post
+  // one that already succeeded.
+  const retryFailedLogs = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const stamp = new Date().toLocaleDateString();
+      const next = [];
+      for (const outcome of results) {
+        if (outcome.logged) { next.push(outcome); continue; }
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: outcome.exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: outcome.exercise.target_weight,
+            actual_reps: outcome.reps,
+          });
+          next.push({
+            ...outcome,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('retry logWorkout:', outcome.exercise.exercise_name, err);
+          next.push(outcome);
+        }
+      }
+      await loadHistory();
+      setResults(next);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -340,9 +401,7 @@ function App() {
     if (advancing) return;
     setAdvancing(true);
     try {
-      const advancable = results.filter(o =>
-        o.logged && o.passed &&
-        ((o.exercise.weight_increment || 0) > 0 || (o.exercise.rep_increment || 0) > 0));
+      const advancable = results.filter(isAdvancable);
 
       // Sequential, and /advance is idempotent, so a partial failure can be
       // retried without duplicating the rows that already landed.
@@ -425,6 +484,7 @@ function App() {
             currentSet={currentSet}
             currentExercise={currentExercise}
             completedSets={completedSets}
+            completedByExercise={completedByExercise}
             liveReps={liveReps}
             setLiveReps={setLiveReps}
             cameraResetKey={cameraResetKey}
@@ -432,9 +492,11 @@ function App() {
             setAutoCamera={setAutoCamera}
             results={results}
             advancing={advancing}
+            saving={saving}
             startSession={startSession}
             doneSet={doneSet}
             finishWorkout={finishWorkout}
+            retryFailedLogs={retryFailedLogs}
             confirmProgression={confirmProgression}
             skipProgression={skipProgression}
             cancelSession={cancelSession}
@@ -457,6 +519,7 @@ function App() {
             setPlanExercises={setPlanExercises}
             handleCreatePlan={handleCreatePlan}
             onStartPlan={onStartPlan}
+            creatingPlan={creatingPlan}
           />
         )}
 
