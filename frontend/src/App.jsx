@@ -9,6 +9,7 @@ import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
+import MeTab from './tabs/MeTab';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -339,6 +340,14 @@ function App() {
             workoutHistory={workoutHistory}
             chartData={chartData}
             chartOptions={chartOptions}
+          />
+        )}
+
+        {activeTab === 'me' && (
+          <MeTab
+            workoutHistory={workoutHistory}
+            autoCamera={autoCamera}
+            setAutoCamera={setAutoCamera}
           />
         )}
 
