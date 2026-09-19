@@ -128,6 +128,7 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
     } catch (err) {
       console.error('updateProfile:', err);
       setSaveStatus('Error saving');
+      setTimeout(() => setSaveStatus(''), 2000);
     } finally {
       setSaving(false);
     }
@@ -149,14 +150,31 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
     }
 
     setUploadingAvatar(true);
+
+    let path;
     try {
-      const path = await uploadAvatar(file, user.id);
-      await fitnessApi.updateProfile({ avatar_path: path });
-      setProfile((p) => ({ ...(p || {}), avatar_path: path }));
-      setAvatarPath(path);
+      path = await uploadAvatar(file, user.id);
     } catch (err) {
       console.error('uploadAvatar:', err);
       setAvatarError('Upload failed. Please try again.');
+      setUploadingAvatar(false);
+      return;
+    }
+
+    // The storage path is deterministic (userId/avatar.<ext>), so
+    // re-uploading with the same extension leaves `path` identical to the
+    // current avatarPath and the [avatarPath] effect below would not re-run.
+    // Mint a fresh signed URL here and set it directly so the new image
+    // shows immediately regardless of whether the path changed.
+    try {
+      const freshUrl = await avatarUrl(path);
+      setAvatarSrc(freshUrl);
+      setAvatarPath(path);
+      await fitnessApi.updateProfile({ avatar_path: path });
+      setProfile((p) => ({ ...(p || {}), avatar_path: path }));
+    } catch (err) {
+      console.error('updateProfile:', err);
+      setAvatarError('Photo uploaded, but saving your profile failed. Please try again.');
     } finally {
       setUploadingAvatar(false);
     }

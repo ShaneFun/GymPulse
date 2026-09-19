@@ -20,7 +20,12 @@ apiClient.interceptors.response.use(
   (error) => {
     // A rejected token means the session is no longer usable; drop it so the
     // app falls back to the login screen rather than looping on failures.
-    if (error.response?.status === 401) supabase.auth.signOut();
+    if (error.response?.status === 401) {
+      // Not awaited (this interceptor must stay synchronous), so a burst of
+      // concurrent 401s could otherwise produce multiple unhandled
+      // rejections if signOut() itself fails.
+      supabase.auth.signOut().catch(() => {});
+    }
     return Promise.reject(error);
   }
 );

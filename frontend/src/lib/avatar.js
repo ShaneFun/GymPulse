@@ -3,7 +3,10 @@ import { supabase } from './supabase';
 // Files live under a folder named for the user id; the storage policies
 // require that first path segment to match auth.uid().
 export async function uploadAvatar(file, userId) {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+  // A name with no extension (e.g. "photo") would otherwise have
+  // .split('.').pop() return the whole name as the "extension".
+  const parts = file.name.split('.');
+  const ext = parts.length > 1 ? parts.pop().toLowerCase() : 'png';
   const path = `${userId}/avatar.${ext}`;
 
   const { error } = await supabase.storage
