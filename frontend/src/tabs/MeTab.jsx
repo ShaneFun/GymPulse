@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Camera, LogOut } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Camera, LogOut, User } from 'lucide-react';
 import { formatWeight } from '../lib/format';
 import { fitnessApi } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
+import { avatarUrl, uploadAvatar } from '../lib/avatar';
+
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const totalReps = (log) => (log.actual_reps || []).reduce((a, b) => a + b, 0);
 
@@ -65,6 +68,12 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
 
+  const [avatarPath, setAvatarPath] = useState(null);
+  const [avatarSrc, setAvatarSrc] = useState(null);
+  const [avatarError, setAvatarError] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef(null);
+
   useEffect(() => {
     let active = true;
     fitnessApi.getProfile()
@@ -76,11 +85,21 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
         setDisplayName(fields.displayName);
         setPhone(fields.phone);
         setBirthYear(fields.birthYear);
+        setAvatarPath(data.avatar_path || null);
       })
       .catch((err) => console.error('getProfile:', err))
       .finally(() => { if (active) setProfileLoaded(true); });
     return () => { active = false; };
   }, []);
+
+  // avatarUrl is async (it mints a signed URL), so it can't run during render.
+  // It already resolves to null for a falsy path, so this covers both cases
+  // via the .then() callback rather than a synchronous setState in the effect.
+  useEffect(() => {
+    let active = true;
+    avatarUrl(avatarPath).then((url) => { if (active) setAvatarSrc(url); });
+    return () => { active = false; };
+  }, [avatarPath]);
 
   const savedFields = fieldsFromProfile(profile);
   const isDirty = profileLoaded && (
@@ -111,6 +130,35 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
       setSaveStatus('Error saving');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file after an error
+    if (!file) return;
+
+    setAvatarError('');
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please choose an image file.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError('Image must be under 2 MB.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const path = await uploadAvatar(file, user.id);
+      await fitnessApi.updateProfile({ avatar_path: path });
+      setProfile((p) => ({ ...(p || {}), avatar_path: path }));
+      setAvatarPath(path);
+    } catch (err) {
+      console.error('uploadAvatar:', err);
+      setAvatarError('Upload failed. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -177,6 +225,32 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
       <p className="dim field-note">Your email can&rsquo;t be changed here.</p>
 
       <div className="card">
+        <div className="avatar-row">
+          {avatarSrc ? (
+            <img src={avatarSrc} alt="Your avatar" className="avatar" />
+          ) : (
+            <div className="avatar-placeholder">
+              <User size={28} strokeWidth={1.5} />
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => avatarInputRef.current?.click()}
+            disabled={uploadingAvatar}
+          >
+            {uploadingAvatar ? 'Uploading…' : 'Change photo'}
+          </button>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarChange}
+            className="sr-only"
+          />
+        </div>
+        {avatarError && <p className="dim field-note">{avatarError}</p>}
+
         <div className="input-group">
           <label className="label" htmlFor="me-display-name">Display name</label>
           <input

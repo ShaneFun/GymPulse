@@ -329,6 +329,33 @@ input:focus-visible, select:focus-visible {
 .set-chip-done .set-chip-label   { color: var(--pass-ink); }
 .set-chip-current .set-chip-label { color: var(--accent-ink); opacity: 0.6; }
 
+/* ─── Avatar ─── */
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.avatar,
+.avatar-placeholder {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: var(--r-pill);
+}
+
+.avatar {
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
 /* ─── List rows ─── */
 .row {
   display: flex;
