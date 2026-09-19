@@ -1,6 +1,16 @@
-import { Play, Check, Save, ArrowUp, Trophy } from 'lucide-react';
+import { useState } from 'react';
+import { Play, Square, RotateCcw, Check, X, Save, ArrowUp, Trophy } from 'lucide-react';
 import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import { formatWeight } from '../lib/format';
+
+// No-op defaults so the control row can render (and stay disabled-feeling)
+// before AICameraCounter's first onControls handoff lands.
+const NO_CAMERA_CONTROLS = {
+  isCameraActive: false,
+  startCamera: () => {},
+  stopCamera: () => {},
+  resetCount: () => {},
+};
 
 function WorkoutTab({
   plans, selectedPlan, setSelectedPlan, sessionState, currentSet, completedSets,
@@ -8,6 +18,8 @@ function WorkoutTab({
   advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
   cancelSession,
 }) {
+  const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
+
   return (
     <div>
       <h1 className="screen-heading">Workout</h1>
@@ -80,10 +92,60 @@ function WorkoutTab({
               autoStart={autoCamera}
               resetKey={cameraResetKey}
               onRepUpdate={setLiveReps}
+              onControls={setCameraControls}
+              overlay={
+                <div className="camera-readout">
+                  <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
+                  <span className="camera-readout-reps tnum">{liveReps}</span>
+                </div>
+              }
             />
+
+            {/* One icon-only row: camera controls (Reset, Start/Stop) plus
+                session controls (Done Set, Cancel) — merged so every control
+                stays reachable under a tall portrait camera without scrolling. */}
             <div className="card-dark-body">
-              <div className="micro">Set {currentSet} of {selectedPlan.target_sets}</div>
-              <div className="rep-counter">{liveReps}</div>
+              <div className="camera-controls">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={cameraControls.resetCount}
+                  aria-label="Reset rep count"
+                >
+                  <RotateCcw size={18} strokeWidth={1.5} />
+                </button>
+
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={cameraControls.isCameraActive ? cameraControls.stopCamera : cameraControls.startCamera}
+                  aria-label={cameraControls.isCameraActive ? 'Stop camera' : 'Start camera'}
+                >
+                  {cameraControls.isCameraActive
+                    ? <Square size={18} strokeWidth={1.5} />
+                    : <Play size={18} strokeWidth={1.5} />}
+                </button>
+
+                <button
+                  type="button"
+                  className="icon-btn-primary"
+                  onClick={doneSet}
+                  disabled={liveReps < 1}
+                  aria-label={`Done set, ${liveReps} reps`}
+                >
+                  <Check size={18} strokeWidth={1.5} />
+                  <span className="tnum">{liveReps}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={cancelSession}
+                  aria-label="Cancel session"
+                >
+                  <X size={18} strokeWidth={1.5} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -98,20 +160,6 @@ function WorkoutTab({
               <div className="set-chip-label">Set {currentSet}</div>
               <div className="set-chip-value">…</div>
             </div>
-          </div>
-
-          <div className="btn-row">
-            <button
-              className="btn btn-accent"
-              onClick={doneSet}
-              disabled={liveReps < 1}
-            >
-              <Check size={18} strokeWidth={1.5} />
-              Done Set ({liveReps} reps)
-            </button>
-            <button className="btn btn-secondary" onClick={cancelSession}>
-              Cancel
-            </button>
           </div>
         </>
       )}

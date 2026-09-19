@@ -65,7 +65,6 @@ body {
 
 /* Every number in the app must not jitter as digits change width. */
 .tnum,
-.rep-counter,
 .stat-tile-value,
 .set-chip-value {
   font-variant-numeric: tabular-nums;
@@ -301,15 +300,6 @@ input:focus-visible, select:focus-visible {
   margin-top: 4px;
 }
 
-/* ─── Rep counter (inside the dark camera card) ─── */
-.rep-counter {
-  font-size: 72px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--text-on-dark);
-}
-
 /* ─── Set chips ─── */
 .set-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -474,17 +464,23 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   width: 100%;
   height: auto;
   display: block;
-  /* Keep a tall portrait frame from pushing the controls off-screen. */
-  max-height: 60vh;
+  /* Capped so the dark card plus its control row fit above the bottom tab
+     bar without scrolling, even for a tall portrait phone camera. */
+  max-height: 45vh;
   object-fit: contain;
   margin: 0 auto;
 }
 .camera-frame video  { display: none; }
 
+/* Feedback caption pinned to the camera frame instead of stacked below it. */
 .camera-overlay {
   position: absolute;
   left: 20px;
+  right: 20px;
   bottom: 16px;
+  z-index: 2;
+  color: var(--text-on-dark);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
 .text-center { text-align: center; }
@@ -492,6 +488,7 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 .camera-scrim {
   position: absolute;
   inset: 0;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -500,6 +497,72 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   background: rgba(0, 0, 0, 0.65);
   color: var(--text-on-dark);
 }
+
+/* ─── Camera readout overlay (set label + live rep count, pinned over the
+   video itself so nothing about the camera stacks below the fold) ─── */
+.camera-readout {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.camera-readout-set {
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--text-on-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.camera-readout-reps {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text-on-dark);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ─── Camera control row (icon-only: Reset, Start/Stop, Done Set, Cancel —
+   replaces the camera's own Start/Stop/Reset row and the Workout tab's
+   Done Set/Cancel row so every control fits in one line under the camera) ─── */
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-btn-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.icon-btn-primary:active   { transform: scale(0.97); }
+.icon-btn-primary:disabled { opacity: 0.4; cursor: default; transform: none; }
 
 /* ─── Login screen ─── */
 .login-screen {

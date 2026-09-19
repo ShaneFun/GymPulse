@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Square, RotateCcw, Camera } from 'lucide-react';
+import { Camera } from 'lucide-react';
 
 // Exercise configurations ported from Good-GYM's exercises.json
 // MediaPipe landmark indices:
@@ -90,8 +90,16 @@ export { EXERCISE_CONFIGS };
  *  resetKey            — increment this number to reset counter to 0
  *  autoStart           — start camera immediately on mount (default false)
  *  exerciseLocked      — exercise key string; if set, hides the dropdown
+ *  onControls(state)   — called with { isCameraActive, startCamera, stopCamera,
+ *                         resetCount } so the parent can render its own
+ *                         control row instead of the camera owning session UI
+ *  overlay             — optional ReactNode rendered absolutely over the
+ *                         video (the parent supplies session readouts like
+ *                         "Set 2 of 3" — the camera has no concept of a set)
  */
-function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null }) {
+function AICameraCounter({
+  onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null, onControls, overlay = null,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [exercise, setExercise] = useState(exerciseLocked || 'bicep_curl');
@@ -107,8 +115,10 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
   const poseInstanceRef = useRef(null);
   const angleHistoryRef = useRef([]);
   const onRepUpdateRef = useRef(onRepUpdate);
+  const onControlsRef = useRef(onControls);
 
   useEffect(() => { onRepUpdateRef.current = onRepUpdate; }, [onRepUpdate]);
+  useEffect(() => { onControlsRef.current = onControls; }, [onControls]);
 
   // Sync exercise ref when dropdown changes
   useEffect(() => {
@@ -311,6 +321,18 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
     stageRef.current = null;
   };
 
+  // Hand the camera's controls up to the parent (WorkoutTab) so it can
+  // render one unified control row instead of the camera owning Start/Stop/
+  // Reset buttons of its own — the camera shouldn't know what a "set" is,
+  // so it only exposes state and actions, never session UI. Deliberately
+  // keyed on isCameraActive alone: startCamera/stopCamera/resetCount only
+  // ever close over refs, so each render's versions are equivalent and the
+  // effect need not re-fire just because their identities changed.
+  useEffect(() => {
+    onControlsRef.current?.({ isCameraActive, startCamera, stopCamera, resetCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraActive]);
+
   // ── Render ──────────────────────────────────────────────
   return (
     <>
@@ -324,10 +346,15 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
         </div>
       )}
 
-      {/* Camera view */}
+      {/* Camera view — session readouts (set label, live rep count) are
+          supplied by the parent and overlaid on the video via `overlay`,
+          and the feedback caption is pinned to the frame too, so nothing
+          about the camera pushes controls off-screen on a phone. */}
       <div className="camera-frame">
         <video ref={videoRef} playsInline muted />
         <canvas ref={canvasRef} width={640} height={480} />
+        {overlay}
+        <p className="micro camera-overlay">{feedback}</p>
 
         {!isCameraActive && (
           <div className="camera-scrim">
@@ -335,28 +362,6 @@ function AICameraCounter({ onRepUpdate, resetKey = 0, autoStart = false, exercis
             <span className="micro">Camera off</span>
           </div>
         )}
-      </div>
-
-      <div className="card-dark-body">
-        <p className="micro text-center">{feedback}</p>
-
-        <div className="btn-row">
-          {!isCameraActive ? (
-            <button className="btn btn-sm btn-secondary" onClick={startCamera}>
-              <Play size={16} strokeWidth={1.5} />
-              Start
-            </button>
-          ) : (
-            <button className="btn btn-sm btn-secondary" onClick={stopCamera}>
-              <Square size={16} strokeWidth={1.5} />
-              Stop
-            </button>
-          )}
-          <button className="btn btn-sm btn-secondary" onClick={resetCount}>
-            <RotateCcw size={16} strokeWidth={1.5} />
-            Reset
-          </button>
-        </div>
       </div>
     </>
   );
