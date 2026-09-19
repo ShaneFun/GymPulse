@@ -70,6 +70,12 @@ class ScheduleCreate(BaseModel):
     weight_increment: float = Field(default=0, ge=0)
     rep_increment: int = Field(default=0, ge=0)
 
+class ProfileUpdate(BaseModel):
+    display_name: str | None = None
+    phone: str | None = None
+    birth_year: int | None = Field(default=None, ge=1900, le=2100)
+    avatar_path: str | None = None
+
 class WorkoutLogCreate(BaseModel):
     schedule_id: str     
     log_name: str       
@@ -99,6 +105,48 @@ def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), u
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/profile")
+def get_profile(
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    try:
+        existing = db.table("profiles").select("*").eq("id", user_id).execute()
+        if len(existing.data) > 0:
+            return {"data": existing.data[0]}
+
+        created = db.table("profiles").insert({"id": user_id}).execute()
+        if len(created.data) == 0:
+            raise HTTPException(status_code=400, detail="Could not create profile.")
+        return {"data": created.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/profile")
+def update_profile(
+    profile: ProfileUpdate,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    try:
+        # exclude_unset so omitting a field leaves it alone rather than nulling it.
+        values = profile.model_dump(exclude_unset=True)
+        if not values:
+            raise HTTPException(status_code=400, detail="No fields to update.")
+
+        response = db.table("profiles").update(values).eq("id", user_id).execute()
+        if len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Profile not found.")
+        return {"data": response.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/schedules")
 def create_schedule(schedule: ScheduleCreate, db: Client = Depends(get_supabase)):

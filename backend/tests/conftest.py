@@ -16,6 +16,11 @@ against it:
 - `FakeQuery.select(*columns)` ignores the requested columns and always
   returns whole rows, so a bug where code reads a field it forgot to select
   will not be caught.
+- `FakeTable.update` ignores Postgres triggers and defaults, so `updated_at`
+  is not maintained by the fake.
+- `FakeInsert` does not backfill unset columns: a row read back from the fake
+  omits keys that a real query would return as NULL, because the fake has no
+  schema to know those columns exist.
 """
 
 import sys
@@ -68,6 +73,27 @@ class FakeInsert:
         return FakeResponse([row])
 
 
+class FakeUpdate:
+    """Mimics .update(values).eq(col, val).execute()."""
+
+    def __init__(self, table, values):
+        self._table = table
+        self._values = values
+        self._filters = []
+
+    def eq(self, column, value):
+        self._filters.append((column, value))
+        return self
+
+    def execute(self):
+        updated = []
+        for row in self._table.rows:
+            if all(str(row.get(c)) == str(v) for c, v in self._filters):
+                row.update(self._values)
+                updated.append(row)
+        return FakeResponse(updated)
+
+
 class FakeTable:
     """Stands in for a supabase-py table handle, i.e. the object returned by
     `supabase.table(name)`, holding its rows in memory."""
@@ -81,6 +107,9 @@ class FakeTable:
 
     def insert(self, row):
         return FakeInsert(self, row)
+
+    def update(self, values):
+        return FakeUpdate(self, values)
 
 
 class FakeSupabase:
