@@ -43,6 +43,19 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) =>
     supabase.auth.signInWithPassword({ email, password });
 
+  // Returns needsConfirmation: with "Confirm email" on, Supabase creates the
+  // user but no session, and the caller has to say "check your inbox"
+  // instead of dropping the user on a screen that looks like a failure.
+  const signUp = async (email, password) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) throw new Error(error.message);
+    return { needsConfirmation: !data.session };
+  };
+
   // Supabase reports success even for an address that has no account, so
   // that this cannot be used to discover who is registered. The UI has to
   // be worded to match ("if that address has an account...").
@@ -95,6 +108,7 @@ export function AuthProvider({ children }) {
     loading,
     recovery,
     signIn,
+    signUp,
     signOut,
     requestPasswordReset,
     completePasswordReset,
