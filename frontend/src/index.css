@@ -52,6 +52,10 @@
 
 html, body {
   height: 100%;
+  /* The shell scrolls, not the document. Letting the document scroll is what
+     allowed the page to be dragged past its content on iOS, taking the tab
+     bar with it. */
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -78,17 +82,28 @@ body {
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  /* A fixed height, not a minimum: the shell IS the viewport, and the content
+     row inside it is what scrolls. */
+  height: 100vh;
+  height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   background: var(--bg);
   position: relative;
+  overflow: hidden;
 }
 
 .app-content {
   flex: 1;
-  padding: 8px 20px calc(96px + env(safe-area-inset-bottom, 0px));
+  /* Without min-height:0 a flex child refuses to shrink below its content,
+     so it would never scroll -- the page would grow instead. */
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* No bottom gutter for a floating bar any more: the tab bar is a sibling
+     row now, so it cannot overlap this. */
+  padding: 8px 20px 20px;
 }
 
 /* ─── Typography ─── */
@@ -399,18 +414,15 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 }
 
 /* ─── Bottom tab bar ─── */
+/* A real row in the shell's column rather than a fixed overlay. iOS detaches
+   position:fixed elements during momentum scrolling, which is how the bar
+   could scroll away. As a flex sibling it simply cannot. */
 .tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 480px;
+  flex: 0 0 auto;
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--hairline);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  z-index: 100;
 }
 
 .tab-btn {

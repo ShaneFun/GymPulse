@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Plus, ChevronRight, ClipboardList, Trash2 } from 'lucide-react';
+import { Plus, ChevronRight, ClipboardList, Trash2, Check } from 'lucide-react';
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import ExercisePicker from '../components/ExercisePicker';
@@ -10,6 +10,8 @@ function PlanTab({
   planExercises, setPlanExercises, handleCreatePlan, onStartPlan, creatingPlan,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The form starts closed so the tab opens on your plans, not a blank form.
+  const [formOpen, setFormOpen] = useState(false);
   const addExerciseBtnRef = useRef(null);
 
   const closePicker = () => {
@@ -37,8 +39,27 @@ function PlanTab({
     <div>
       <h1 className="screen-heading">Plan</h1>
 
+      {!formOpen && (
+        <button
+          type="button"
+          className="btn btn-accent btn-block"
+          onClick={() => setFormOpen(true)}
+        >
+          <Plus size={18} strokeWidth={1.5} />
+          Create plan
+        </button>
+      )}
+
+      {formOpen && (
       <div className="card">
-        <form onSubmit={handleCreatePlan}>
+        <form
+          onSubmit={async (e) => {
+            // Close only on success -- a failed create keeps the form up with
+            // the user's work still in it.
+            const ok = await handleCreatePlan(e);
+            if (ok) setFormOpen(false);
+          }}
+        >
           <div className="input-group">
             <label className="label">Plan Name</label>
             <input
@@ -142,26 +163,29 @@ function PlanTab({
             })
           )}
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-block"
-            onClick={() => setPickerOpen(true)}
-            ref={addExerciseBtnRef}
-          >
-            <Plus size={18} strokeWidth={1.5} />
-            Add exercise
-          </button>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setPickerOpen(true)}
+              ref={addExerciseBtnRef}
+            >
+              <Plus size={18} strokeWidth={1.5} />
+              Add exercise
+            </button>
 
-          <button
-            type="submit"
-            className="btn btn-accent btn-block"
-            disabled={planExercises.length === 0 || creatingPlan}
-          >
-            <Plus size={18} strokeWidth={1.5} />
-            {creatingPlan ? 'Creating…' : 'Create Plan'}
-          </button>
+            <button
+              type="submit"
+              className="btn btn-accent"
+              disabled={planExercises.length === 0 || creatingPlan}
+            >
+              <Check size={18} strokeWidth={1.5} />
+              {creatingPlan ? 'Saving…' : 'Done'}
+            </button>
+          </div>
         </form>
       </div>
+      )}
 
       <div className="section-heading">My Plans</div>
       {plans.length === 0 ? (

@@ -212,9 +212,10 @@ function App() {
       setPlanExerciseRest('180');
       setPlanExercises([]);
       loadPlans();
-      alert('Plan created!');
+      return true;
     } catch (err) {
       alert('Error creating plan: ' + err.message);
+      return false;
     } finally {
       setCreatingPlan(false);
     }
