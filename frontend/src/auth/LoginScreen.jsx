@@ -1,39 +1,33 @@
 import { useState } from 'react';
 import { MailCheck } from 'lucide-react';
 import { useAuth } from './AuthProvider';
-import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validation';
+import { validateEmail } from '../lib/validation';
 
-// One screen, three modes. They share the email field and most of the
-// layout, and splitting them into separate components would mean three
-// copies of the same form for the sake of one differing button.
-const COPY = {
-  signin: { title: 'GymPulse', action: 'Sign in', busy: 'Signing in…' },
-  signup: { title: 'Create account', action: 'Create account', busy: 'Creating…' },
-  forgot: { title: 'Reset password', action: 'Email me a link', busy: 'Sending…' },
-};
-
+// Sign in, or ask for a password-reset link. There is no "create account"
+// path on purpose: signups are closed in Supabase, so the only account is
+// the owner's, and a link leading to "Signups not allowed for this
+// instance" would be worse than no link.
 function LoginScreen() {
-  const { signIn, signUp, requestPasswordReset } = useAuth();
+  const { signIn, requestPasswordReset } = useAuth();
 
-  const [mode, setMode] = useState('signin');
+  const [forgot, setForgot] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  // Set once an email is on its way; the form is replaced by a confirmation
-  // rather than sitting there looking like nothing happened.
-  const [sent, setSent] = useState(null);
+  // Set once the reset email is on its way; the form is replaced by a
+  // confirmation rather than sitting there looking like nothing happened.
+  const [sentTo, setSentTo] = useState(null);
 
-  const needsPassword = mode !== 'forgot';
-  // Only validate on sign-up: an existing password predates these rules, and
-  // rejecting it at sign-in would lock people out of their own accounts.
-  const passwordError = mode === 'signup' && password ? validatePassword(password) : '';
+  // Deliberately not validated on sign-in: an existing password predates
+  // the current rules, and enforcing them at the door would lock someone
+  // out of an account they still own.
   const emailError = email ? validateEmail(email) : '';
-  const canSubmit = !submitting && email && !emailError
-    && (!needsPassword || (password && !passwordError));
+  const canSubmit = !submitting && email && !emailError && (forgot || password);
 
-  const switchTo = (next) => {
-    setMode(next);
+  const showSignIn = () => {
+    setForgot(false);
+    setSentTo(null);
     setError('');
     setPassword('');
   };
@@ -45,24 +39,15 @@ function LoginScreen() {
     setError('');
 
     try {
-      if (mode === 'signin') {
-        const { error: signInError } = await signIn(email, password);
-        if (signInError) throw new Error(signInError.message);
-        // On success AuthProvider's listener updates the session and App
-        // renders past this screen — nothing left to do here.
+      if (forgot) {
+        await requestPasswordReset(email);
+        setSentTo(email);
         return;
       }
-
-      if (mode === 'signup') {
-        const { needsConfirmation } = await signUp(email, password);
-        if (needsConfirmation) {
-          setSent({ kind: 'confirm', email });
-        }
-        return;
-      }
-
-      await requestPasswordReset(email);
-      setSent({ kind: 'reset', email });
+      const { error: signInError } = await signIn(email, password);
+      if (signInError) throw new Error(signInError.message);
+      // On success AuthProvider's listener updates the session and App
+      // renders past this screen — nothing left to do here.
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
@@ -70,24 +55,19 @@ function LoginScreen() {
     }
   };
 
-  if (sent) {
+  if (sentTo) {
     return (
       <div className="login-screen">
         <div className="card login-card login-sent">
           <MailCheck size={32} strokeWidth={1.5} />
           <h1 className="screen-heading">Check your email</h1>
+          {/* Worded so it reveals nothing: Supabase reports success even for
+              an address with no account, so that this cannot be used to
+              discover who is registered. */}
           <p className="dim">
-            {sent.kind === 'confirm'
-              ? <>We sent a confirmation link to <strong>{sent.email}</strong>. Click it, then sign in.</>
-              // Worded so it reveals nothing: Supabase reports success even
-              // for an unregistered address, and so must we.
-              : <>If <strong>{sent.email}</strong> has an account, a reset link is on its way.</>}
+            If <strong>{sentTo}</strong> has an account, a reset link is on its way.
           </p>
-          <button
-            type="button"
-            className="btn btn-secondary btn-block"
-            onClick={() => { setSent(null); switchTo('signin'); }}
-          >
+          <button type="button" className="btn btn-secondary btn-block" onClick={showSignIn}>
             Back to sign in
           </button>
         </div>
@@ -95,14 +75,12 @@ function LoginScreen() {
     );
   }
 
-  const copy = COPY[mode];
-
   return (
     <div className="login-screen">
       <div className="card login-card">
-        <h1 className="screen-heading">{copy.title}</h1>
+        <h1 className="screen-heading">{forgot ? 'Reset password' : 'GymPulse'}</h1>
 
-        {mode === 'forgot' && (
+        {forgot && (
           <p className="dim field-note">
             Enter your email and we&rsquo;ll send you a link to set a new password.
           </p>
@@ -123,49 +101,37 @@ function LoginScreen() {
             {emailError && <p className="field-error">{emailError}</p>}
           </div>
 
-          {needsPassword && (
+          {!forgot && (
             <div className="input-group">
               <label className="label" htmlFor="login-password">Password</label>
               <input
                 id="login-password"
                 type="password"
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={passwordError ? 'true' : undefined}
                 required
               />
-              {passwordError
-                ? <p className="field-error">{passwordError}</p>
-                : mode === 'signup' && (
-                  <p className="dim field-note">
-                    At least {MIN_PASSWORD_LENGTH} characters, with a letter and a number.
-                  </p>
-                )}
             </div>
           )}
 
           {error && <p className="login-error" role="alert">{error}</p>}
 
           <button type="submit" className="btn btn-accent btn-block" disabled={!canSubmit}>
-            {submitting ? copy.busy : copy.action}
+            {submitting
+              ? (forgot ? 'Sending…' : 'Signing in…')
+              : (forgot ? 'Email me a link' : 'Sign in')}
           </button>
         </form>
 
         <div className="login-links">
-          {mode === 'signin' && (
-            <>
-              <button type="button" className="link-btn" onClick={() => switchTo('forgot')}>
-                Forgot password?
-              </button>
-              <button type="button" className="link-btn" onClick={() => switchTo('signup')}>
-                Create an account
-              </button>
-            </>
-          )}
-          {mode !== 'signin' && (
-            <button type="button" className="link-btn" onClick={() => switchTo('signin')}>
+          {forgot ? (
+            <button type="button" className="link-btn" onClick={showSignIn}>
               Back to sign in
+            </button>
+          ) : (
+            <button type="button" className="link-btn" onClick={() => { setForgot(true); setError(''); }}>
+              Forgot password?
             </button>
           )}
         </div>
