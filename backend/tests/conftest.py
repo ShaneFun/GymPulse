@@ -24,6 +24,8 @@ against it:
 - `FakeUpsert` only inserts-if-absent or returns the existing row as-is; it
   does not merge new values into an existing row the way a real Postgres
   upsert would. This is enough for main.py's current id-only upsert.
+- The fake has no foreign keys, so deleting a program does not cascade to
+  its schedules the way Postgres would.
 """
 
 import os
@@ -173,6 +175,9 @@ class FakeTable:
 
     def update(self, values):
         return FakeUpdate(self, values)
+
+    def delete(self):
+        return FakeDelete(self)
 
 
 class FakeSupabase:

@@ -148,6 +148,24 @@ class PlannedDayCreate(BaseModel):
     day: str
 
 
+class PlanExerciseCreate(BaseModel):
+    exercise_name: str
+    target_weight: float
+    target_sets: int
+    target_reps: int
+    rest_seconds: int = Field(default=90, ge=0)
+    weight_increment: float = Field(default=0, ge=0)
+    rep_increment: int = Field(default=0, ge=0)
+
+
+class PlanCreate(BaseModel):
+    name: str
+    exercise_rest_seconds: int = Field(default=180, ge=0)
+    # min_length=1: a plan with no exercises is not a plan, and rejecting it
+    # here is what makes the 422 in the tests a validation error rather than
+    # a half-built program.
+    exercises: list[PlanExerciseCreate] = Field(min_length=1)
+
 class ProfileUpdate(BaseModel):
     display_name: str | None = None
     phone: str | None = None
@@ -240,6 +258,69 @@ def delete_planned_day(
     except Exception as e:
         raise _map_supabase_error(e)
 
+
+@app.post("/plans")
+def create_plan(
+    plan: PlanCreate,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    """Create a program and all of its week-1 exercises as one unit."""
+    program_id = None
+    try:
+        program_res = db.table("programs").insert({
+            "name": plan.name,
+            "user_id": user_id,
+            "exercise_rest_seconds": plan.exercise_rest_seconds
+        }).execute()
+
+        if len(program_res.data) == 0:
+            raise HTTPException(status_code=400, detail="Failed to create plan.")
+
+        program = program_res.data[0]
+        program_id = program["id"]
+
+        schedules = []
+        for exercise in plan.exercises:
+            row = db.table("schedules").insert({
+                "program_id": program_id,
+                "week": 1,
+                "exercise_name": exercise.exercise_name,
+                "target_weight": exercise.target_weight,
+                "target_sets": exercise.target_sets,
+                "target_reps": exercise.target_reps,
+                "rest_seconds": exercise.rest_seconds,
+                "weight_increment": exercise.weight_increment,
+                "rep_increment": exercise.rep_increment
+            }).execute()
+
+            if len(row.data) == 0:
+                raise HTTPException(status_code=400, detail="Failed to add an exercise.")
+            schedules.append(row.data[0])
+
+        return {
+            "message": "Plan created!",
+            "data": {"program": program, "schedules": schedules}
+        }
+    except Exception as e:
+        # Roll back by hand: a program with no exercises is invisible in the
+        # UI but real in the database, which is how the existing orphan row
+        # got there.
+        if program_id is not None:
+            try:
+                # Delete the children first rather than relying on the foreign
+                # key to cascade: the schema lives in the Supabase dashboard,
+                # so that behaviour is not verifiable from this repo and could
+                # change. Explicit deletion is correct either way.
+                db.table("schedules").delete().eq("program_id", program_id).execute()
+                db.table("programs").delete().eq("id", program_id).execute()
+            except Exception as cleanup_error:
+                # The create already failed; report that, not this. Log it so a
+                # failed rollback is not completely invisible.
+                print(f"Plan rollback failed for program {program_id}: {cleanup_error}")
+        if isinstance(e, HTTPException):
+            raise
+        raise _map_supabase_error(e)
 
 @app.get("/profile")
 def get_profile(

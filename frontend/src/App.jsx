@@ -7,6 +7,7 @@ import {
 } from 'chart.js';
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
 import { primeAudio, say } from './lib/beep';
+import { isAdvancable } from './lib/advancable';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -35,20 +36,19 @@ function App() {
   // ── Plan Tab ──
   const [plans, setPlans] = useState([]); // list of {id, program_id, exercise_name, target_sets, target_reps, target_weight, week}
   const [planName, setPlanName] = useState('');
-  const [planExercise, setPlanExercise] = useState('bicep_curl');
-  const [planSets, setPlanSets] = useState('');
-  const [planReps, setPlanReps] = useState('');
-  const [planWeight, setPlanWeight] = useState('0');
-  const [planWeightInc, setPlanWeightInc] = useState('0');
-  const [planRepInc, setPlanRepInc] = useState('0');
-  const [planRest, setPlanRest] = useState('90');
+  const [planExerciseRest, setPlanExerciseRest] = useState('180');
+  // Each entry is one exercise in the plan being built.
+  const [planExercises, setPlanExercises] = useState([]);
+  const [creatingPlan, setCreatingPlan] = useState(false); // in-flight guard for Create Plan
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
   // sessionState: 'idle' | 'active' | 'done'
   const [sessionState, setSessionState] = useState('idle');
   const [currentSet, setCurrentSet] = useState(1);
-  const [completedSets, setCompletedSets] = useState([]); // array of rep counts
+  const [exerciseIndex, setExerciseIndex] = useState(0);
+  // One array of rep counts per exercise, parallel to selectedPlan.exercises.
+  const [completedByExercise, setCompletedByExercise] = useState([]);
   const [liveReps, setLiveReps] = useState(0);
   // Between sets: 'resting' counts the rest down then waits for a tap;
   // 'getready' is the short lead-in after that tap, during which the camera
@@ -57,9 +57,17 @@ function App() {
   const [getReadyRemaining, setGetReadyRemaining] = useState(0);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
-  // When a PASS has a nonzero increment: { nextWeek, nextWeight, nextReps }
-  const [progression, setProgression] = useState(null);
+  // Per-exercise outcomes from finishWorkout: [{ exercise, reps, passed, logged }]
+  const [results, setResults] = useState([]);
   const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
+  const [saving, setSaving] = useState(false); // in-flight guard for Save & retry-failed-logs
+
+  // Derived above their first use (this eslint config errors on
+  // use-before-declaration for const arrow functions that reference them).
+  const currentExercise = selectedPlan?.exercises?.[exerciseIndex] ?? null;
+  // The flat list becomes the current exercise's list, derived rather than
+  // kept as a second piece of state, so the two can never disagree.
+  const completedSets = completedByExercise[exerciseIndex] ?? [];
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
@@ -80,19 +88,40 @@ function App() {
     try {
       const res = await fitnessApi.getPrograms();
       const programs = res.data.data || [];
-      // For each program, fetch its schedules — each schedule IS a plan
-      const allSchedules = await Promise.all(
+
+      const perProgram = await Promise.all(
         programs.map(p =>
-          fitnessApi.getSchedules(p.id).then(r =>
-            (r.data.data || []).map(s => ({ ...s, programName: p.name }))
-          )
+          fitnessApi.getSchedules(p.id).then(r => ({ program: p, schedules: r.data.data || [] }))
         )
       );
-      setPlans(
-        allSchedules.flat().sort(
-          (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
-        )
+
+      // A plan is every exercise a program holds in one week, so
+      // (programId, week) is its identity — not a schedule id.
+      const grouped = [];
+      for (const { program, schedules } of perProgram) {
+        const byWeek = new Map();
+        for (const s of schedules) {
+          if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+          byWeek.get(s.week).push(s);
+        }
+        for (const [week, exercises] of byWeek) {
+          grouped.push({
+            id: `${program.id}-${week}`,
+            programId: program.id,
+            programName: program.name,
+            week,
+            exerciseRestSeconds: program.exercise_rest_seconds ?? 180,
+            exercises: exercises.slice().sort(
+              (a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))
+            ),
+          });
+        }
+      }
+
+      grouped.sort(
+        (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
       );
+      setPlans(grouped);
     } catch (err) {
       console.error('loadPlans:', err);
     }
@@ -148,39 +177,46 @@ function App() {
   // ── Plan Creation ─────────────────────────────────────────────────────────
   const handleCreatePlan = async (e) => {
     e.preventDefault();
-    if (!planName.trim() || !planSets || !planReps) {
-      alert('Please fill in all fields');
-      return;
-    }
-    try {
-      // Create a program with the plan name, then add one schedule
-      const progRes = await fitnessApi.createProgram(planName.trim());
-      const programId = progRes.data?.data?.id;
-      if (!programId) throw new Error('Could not create plan');
+    if (creatingPlan) return;
+    if (!planName.trim()) { alert('Give the plan a name'); return; }
+    if (planExercises.length === 0) { alert('Add at least one exercise'); return; }
 
-      await fitnessApi.createSchedule({
-        program_id: programId,
-        week: 1,
-        exercise_name: planExercise,
-        target_weight: parseFloat(planWeight) || 0,
-        target_sets: parseInt(planSets),
-        target_reps: parseInt(planReps),
-        weight_increment: Math.max(0, Number(planWeightInc) || 0),
-        rep_increment: Math.max(0, Math.round(Number(planRepInc) || 0)),
-        rest_seconds: Math.max(0, Math.round(Number(planRest) || 0)),
+    for (const ex of planExercises) {
+      if (!ex.sets || Number(ex.sets) < 1) {
+        alert(`${ex.exerciseName}: sets must be at least 1`);
+        return;
+      }
+      if (!ex.reps || Number(ex.reps) < 1) {
+        alert(`${ex.exerciseName}: reps must be at least 1`);
+        return;
+      }
+    }
+
+    setCreatingPlan(true);
+    try {
+      await fitnessApi.createPlan({
+        name: planName.trim(),
+        exercise_rest_seconds: Math.max(0, Math.round(Number(planExerciseRest) || 0)),
+        exercises: planExercises.map(ex => ({
+          exercise_name: ex.exerciseName,
+          target_sets: Math.max(1, Math.round(Number(ex.sets) || 0)),
+          target_reps: Math.max(1, Math.round(Number(ex.reps) || 0)),
+          target_weight: Math.max(0, Number(ex.weight) || 0),
+          rest_seconds: Math.max(0, Math.round(Number(ex.rest) || 0)),
+          weight_increment: Math.max(0, Number(ex.weightInc) || 0),
+          rep_increment: Math.max(0, Math.round(Number(ex.repInc) || 0)),
+        })),
       });
 
       setPlanName('');
-      setPlanSets('');
-      setPlanReps('');
-      setPlanWeight('0');
-      setPlanWeightInc('0');
-      setPlanRepInc('0');
-      setPlanRest('90');
+      setPlanExerciseRest('180');
+      setPlanExercises([]);
       loadPlans();
-      alert(`Plan "${planName}" created!`);
+      alert('Plan created!');
     } catch (err) {
       alert('Error creating plan: ' + err.message);
+    } finally {
+      setCreatingPlan(false);
     }
   };
 
@@ -189,10 +225,11 @@ function App() {
     setSessionState('idle');
     setRestRemaining(0);
     setGetReadyRemaining(0);
-    setCompletedSets([]);
+    setExerciseIndex(0);
+    setCompletedByExercise([]);
     setCurrentSet(1);
     setLiveReps(0);
-    setProgression(null);
+    setResults([]);
   };
 
   const onStartPlan = (p) => {
@@ -207,27 +244,38 @@ function App() {
     // so unlock the context here or the countdown beeps never sound.
     primeAudio();
     setCurrentSet(1);
-    setCompletedSets([]);
+    setExerciseIndex(0);
+    setCompletedByExercise(selectedPlan.exercises.map(() => []));
     setLiveReps(0);
     setCameraResetKey(k => k + 1);
     setSessionState('active');
   };
 
   const doneSet = () => {
-    if (liveReps < 1) return; // Q3: require at least 1 rep
-    const newSets = [...completedSets, liveReps];
-    setCompletedSets(newSets);
+    if (liveReps < 1 || !currentExercise) return;
+
+    const forThisExercise = [...(completedByExercise[exerciseIndex] ?? []), liveReps];
+    const next = completedByExercise.map((v, i) => (i === exerciseIndex ? forThisExercise : v));
+    setCompletedByExercise(next);
     setLiveReps(0);
 
-    if (newSets.length >= selectedPlan.target_sets) {
-      // All sets done
-      setSessionState('done');
-    } else {
+    const moreSets = forThisExercise.length < currentExercise.target_sets;
+    const moreExercises = exerciseIndex < selectedPlan.exercises.length - 1;
+
+    if (moreSets) {
       setCurrentSet(s => s + 1);
-      setCameraResetKey(k => k + 1); // reset counter for next set
-      // Rest instead of leaving the camera live and counting.
-      setRestRemaining(selectedPlan.rest_seconds ?? 90);
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(currentExercise.rest_seconds ?? 90);
       setSessionState('resting');
+    } else if (moreExercises) {
+      // Longer gap between exercises: time to change station or weights.
+      setExerciseIndex(i => i + 1);
+      setCurrentSet(1);
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(selectedPlan.exerciseRestSeconds ?? 180);
+      setSessionState('resting');
+    } else {
+      setSessionState('done');
     }
   };
 
@@ -284,34 +332,91 @@ function App() {
   }, [sessionState, getReadyRemaining]);
 
   const finishWorkout = async () => {
+    // Guard against a double tap: this now makes N sequential round trips
+    // (one per exercise), so the in-flight window can be seconds on slow
+    // wifi, and there is no dedup or delete on the backend -- a second tap
+    // would permanently write duplicate logs.
+    if (saving) return;
+    setSaving(true);
     try {
-      const res = await fitnessApi.logWorkout({
-        schedule_id: selectedPlan.id,
-        log_name: `Session ${new Date().toLocaleDateString()}`,
-        actual_weight: selectedPlan.target_weight,
-        actual_reps: completedSets,
-      });
+      const stamp = new Date().toLocaleDateString();
+      const outcomes = [];
 
-      await loadHistory();
+      for (let i = 0; i < selectedPlan.exercises.length; i++) {
+        const exercise = selectedPlan.exercises[i];
+        const reps = completedByExercise[i] ?? [];
+        if (reps.length === 0) continue; // never started; nothing to record
 
-      const passed = res.data?.status_calculated === 'PASS';
-      const weightInc = selectedPlan.weight_increment || 0;
-      const repInc = selectedPlan.rep_increment || 0;
-
-      // On a PASS with something to progress by, stay here and ask first.
-      if (passed && (weightInc > 0 || repInc > 0)) {
-        setProgression({
-          nextWeek: (selectedPlan.week || 1) + 1,
-          nextWeight: selectedPlan.target_weight + weightInc,
-          nextReps: selectedPlan.target_reps + repInc,
-        });
-        return;
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: exercise.target_weight,
+            actual_reps: reps,
+          });
+          outcomes.push({
+            exercise,
+            reps,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('logWorkout:', exercise.exercise_name, err);
+          outcomes.push({ exercise, reps, logged: false, passed: false });
+        }
       }
 
-      resetSession();
-      setActiveTab('progress');
-    } catch (err) {
-      alert('Error saving workout: ' + err.message);
+      await loadHistory();
+      setResults(outcomes);
+
+      // Offer progression only for exercises that passed AND have something to
+      // progress by; an exercise that failed stays on its current week.
+      const anyFailed = outcomes.some(o => !o.logged);
+      const advancable = outcomes.filter(isAdvancable);
+
+      // Only leave automatically when there is nothing for the user to see or
+      // decide. A failed log has to stay on screen, or it reads as a success.
+      if (advancable.length === 0 && !anyFailed) {
+        resetSession();
+        setActiveTab('progress');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Re-post only the exercises that failed to log. Entries that already
+  // landed (`logged: true`) are left alone, so this can never double-post
+  // one that already succeeded.
+  const retryFailedLogs = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const stamp = new Date().toLocaleDateString();
+      const next = [];
+      for (const outcome of results) {
+        if (outcome.logged) { next.push(outcome); continue; }
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: outcome.exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: outcome.exercise.target_weight,
+            actual_reps: outcome.reps,
+          });
+          next.push({
+            ...outcome,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('retry logWorkout:', outcome.exercise.exercise_name, err);
+          next.push(outcome);
+        }
+      }
+      await loadHistory();
+      setResults(next);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -322,7 +427,13 @@ function App() {
     if (advancing) return;
     setAdvancing(true);
     try {
-      await fitnessApi.advanceSchedule(selectedPlan.id);
+      const advancable = results.filter(isAdvancable);
+
+      // Sequential, and /advance is idempotent, so a partial failure can be
+      // retried without duplicating the rows that already landed.
+      for (const o of advancable) {
+        await fitnessApi.advanceSchedule(o.exercise.id);
+      }
       await loadPlans();
       resetSession();
       setActiveTab('progress');
@@ -397,17 +508,21 @@ function App() {
             setSelectedPlan={setSelectedPlan}
             sessionState={sessionState}
             currentSet={currentSet}
+            currentExercise={currentExercise}
             completedSets={completedSets}
+            completedByExercise={completedByExercise}
             liveReps={liveReps}
             setLiveReps={setLiveReps}
             cameraResetKey={cameraResetKey}
             autoCamera={autoCamera}
             setAutoCamera={setAutoCamera}
-            progression={progression}
+            results={results}
             advancing={advancing}
+            saving={saving}
             startSession={startSession}
             doneSet={doneSet}
             finishWorkout={finishWorkout}
+            retryFailedLogs={retryFailedLogs}
             confirmProgression={confirmProgression}
             skipProgression={skipProgression}
             cancelSession={cancelSession}
@@ -424,22 +539,13 @@ function App() {
             plans={plans}
             planName={planName}
             setPlanName={setPlanName}
-            planExercise={planExercise}
-            setPlanExercise={setPlanExercise}
-            planSets={planSets}
-            setPlanSets={setPlanSets}
-            planReps={planReps}
-            setPlanReps={setPlanReps}
-            planWeight={planWeight}
-            setPlanWeight={setPlanWeight}
-            planWeightInc={planWeightInc}
-            setPlanWeightInc={setPlanWeightInc}
-            planRepInc={planRepInc}
-            planRest={planRest}
-            setPlanRest={setPlanRest}
-            setPlanRepInc={setPlanRepInc}
+            planExerciseRest={planExerciseRest}
+            setPlanExerciseRest={setPlanExerciseRest}
+            planExercises={planExercises}
+            setPlanExercises={setPlanExercises}
             handleCreatePlan={handleCreatePlan}
             onStartPlan={onStartPlan}
+            creatingPlan={creatingPlan}
           />
         )}
 

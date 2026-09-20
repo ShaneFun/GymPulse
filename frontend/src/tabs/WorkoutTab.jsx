@@ -4,6 +4,7 @@ import AICameraCounter, { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import { formatWeight } from '../lib/format';
 import { say, beep, primeAudio } from '../lib/beep';
+import { isAdvancable } from '../lib/advancable';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -22,19 +23,30 @@ const formatClock = (totalSeconds) => {
 };
 
 function WorkoutTab({
-  plans, selectedPlan, setSelectedPlan, sessionState, currentSet, completedSets,
-  liveReps, setLiveReps, cameraResetKey, autoCamera, progression,
-  advancing, startSession, doneSet, finishWorkout, confirmProgression, skipProgression,
-  cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
+  plans, selectedPlan, setSelectedPlan, sessionState, currentSet, currentExercise, completedSets,
+  completedByExercise, liveReps, setLiveReps, cameraResetKey, autoCamera, results,
+  advancing, saving, startSession, doneSet, finishWorkout, retryFailedLogs, confirmProgression,
+  skipProgression, cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
 
   // Reps left in this set, or null when there is no active target. Drives both
   // the on-screen countdown and the beeps.
-  const repsRemaining = (sessionState === 'active' && selectedPlan)
-    ? selectedPlan.target_reps - liveReps
+  const repsRemaining = (sessionState === 'active' && currentExercise)
+    ? currentExercise.target_reps - liveReps
     : null;
   const showCountdown = repsRemaining !== null && repsRemaining > 0 && repsRemaining <= 3;
+
+  // Label for the exercise currently in play, e.g. "Bicep Curl".
+  const exerciseLabel = currentExercise
+    ? (EXERCISE_CONFIGS[currentExercise.exercise_name]?.label || currentExercise.exercise_name)
+    : null;
+  // Only worth naming the exercise on screen when there is more than one to
+  // tell apart.
+  const showExerciseLabel = (selectedPlan?.exercises?.length ?? 0) > 1;
+
+  // Exercises the Done screen can offer to progress.
+  const advancable = results.filter(isAdvancable);
 
   // One beep per value, not per render: without this guard any re-render while
   // sitting on the same rep would retrigger the tone.
@@ -42,14 +54,14 @@ function WorkoutTab({
   const lastCalledRepRef = useRef(0);
 
   useEffect(() => {
-    if (sessionState !== 'active' || !selectedPlan || liveReps <= 0) {
+    if (sessionState !== 'active' || !currentExercise || liveReps <= 0) {
       lastCalledRepRef.current = 0;
       return;
     }
     if (lastCalledRepRef.current === liveReps) return;
     lastCalledRepRef.current = liveReps;
 
-    const left = selectedPlan.target_reps - liveReps;
+    const left = currentExercise.target_reps - liveReps;
 
     // Every rep is called out, because you cannot read the screen mid-rep.
     // The tail switches from counting up to counting down, so the last
@@ -67,7 +79,7 @@ function WorkoutTab({
     } else {
       say(liveReps, { fallback: { frequency: 880, duration: 0.1 } });
     }
-  }, [liveReps, sessionState, selectedPlan]);
+  }, [liveReps, sessionState, currentExercise]);
 
 
   return (
@@ -87,9 +99,7 @@ function WorkoutTab({
               <div className="plan-grid">
                 {plans.map((p) => {
                   const selected = selectedPlan?.id === p.id;
-                  // A list, because a plan will be able to hold several
-                  // exercises later; today it is always exactly one.
-                  const exercises = [p.exercise_name];
+                  const exercises = p.exercises;
                   return (
                     <button
                       type="button"
@@ -99,11 +109,11 @@ function WorkoutTab({
                       aria-pressed={selected}
                     >
                       <div className="plan-card-figures">
-                        {exercises.map((name) => (
+                        {exercises.map((ex) => (
                           <ExerciseFigure
-                            key={name}
-                            exercise={name}
-                            label={EXERCISE_CONFIGS[name]?.label || name}
+                            key={ex.id}
+                            exercise={ex.exercise_name}
+                            label={EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name}
                             size={56}
                           />
                         ))}
@@ -111,8 +121,14 @@ function WorkoutTab({
                       <div className="plan-card-name">{p.programName}</div>
                       <div className="plan-card-meta">Week {p.week}</div>
                       <div className="plan-card-target tnum">
-                        {p.target_sets}×{p.target_reps}
-                        {p.target_weight > 0 ? ` · ${formatWeight(p.target_weight)}kg` : ''}
+                        {exercises.length === 1
+                          ? (
+                            <>
+                              {exercises[0].target_sets}×{exercises[0].target_reps}
+                              {exercises[0].target_weight > 0 ? ` · ${formatWeight(exercises[0].target_weight)}kg` : ''}
+                            </>
+                          )
+                          : `${exercises.length} exercises`}
                       </div>
                       {selected && (
                         <span className="plan-card-check" aria-hidden="true">
@@ -138,11 +154,11 @@ function WorkoutTab({
       )}
 
       {/* ACTIVE — Workout in progress */}
-      {(sessionState === 'active' || sessionState === 'getready') && selectedPlan && (
+      {(sessionState === 'active' || sessionState === 'getready') && selectedPlan && currentExercise && (
         <>
           <div className="card-dark">
             <AICameraCounter
-              exerciseLocked={selectedPlan.exercise_name}
+              exerciseLocked={currentExercise.exercise_name}
               autoStart={autoCamera}
               resetKey={cameraResetKey}
               onRepUpdate={setLiveReps}
@@ -150,7 +166,9 @@ function WorkoutTab({
               overlay={
                 <>
                   <div className="camera-readout">
-                    <span className="camera-readout-set">Set {currentSet} of {selectedPlan.target_sets}</span>
+                    <span className="camera-readout-set">
+                      {showExerciseLabel ? `${exerciseLabel} · Set ${currentSet} of ${currentExercise.target_sets}` : `Set ${currentSet} of ${currentExercise.target_sets}`}
+                    </span>
                     <span className="camera-readout-reps tnum">{liveReps}</span>
                   </div>
                   {sessionState === 'getready' && (
@@ -239,14 +257,14 @@ function WorkoutTab({
       )}
 
       {/* DONE — Workout complete */}
-      {sessionState === 'resting' && selectedPlan && (
+      {sessionState === 'resting' && selectedPlan && currentExercise && (
         <>
           <div className="rest-panel">
             <div className="rest-label">
               {restRemaining > 0 ? 'Rest' : 'Ready when you are'}
             </div>
             <div className="rest-clock tnum">{formatClock(restRemaining)}</div>
-            <div className="rest-next">Up next &middot; Set {currentSet} of {selectedPlan.target_sets}</div>
+            <div className="rest-next">Up next &middot; {exerciseLabel} &middot; Set {currentSet} of {currentExercise.target_sets}</div>
 
             <button type="button" className="btn btn-accent btn-block" onClick={beginGetReady}>
               <Play size={18} strokeWidth={1.5} />
@@ -281,32 +299,96 @@ function WorkoutTab({
             <p className="section-heading">
               <Trophy size={18} strokeWidth={1.5} /> Workout Complete!
             </p>
-            <div className="card-row">
-              <span className="dim">Sets completed</span>
-              <strong>{completedSets.length} / {selectedPlan.target_sets}</strong>
-            </div>
-            <div className="card-row">
-              <span className="dim">Total reps</span>
-              <strong>{completedSets.reduce((a, b) => a + b, 0)}</strong>
-            </div>
+            {results.length === 0 && (
+              <p className="dim">Save to log every exercise and check your progress.</p>
+            )}
           </div>
 
-          <div className="set-chips">
-            {completedSets.map((reps, i) => (
-              <div key={i} className="set-chip set-chip-done">
-                <div className="set-chip-label">Set {i + 1}</div>
-                <div className="set-chip-value">{reps}</div>
+          {/* Pre-save summary: what you just did, visible before you commit
+              it (and even if you go on to Discard). */}
+          {results.length === 0 && selectedPlan.exercises.map((ex, i) => {
+            const reps = completedByExercise?.[i] ?? [];
+            if (reps.length === 0) return null; // never started; nothing to show
+            const label = EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name;
+            const total = reps.reduce((a, b) => a + b, 0);
+            return (
+              <div key={ex.id}>
+                <div className="row">
+                  <div>
+                    <div className="row-title">{label}</div>
+                    <div className="row-sub tnum">{reps.join(' · ')} &middot; {total} reps total</div>
+                  </div>
+                </div>
+                <div className="set-chips">
+                  {reps.map((r, si) => (
+                    <div key={si} className="set-chip set-chip-done">
+                      <div className="set-chip-label">Set {si + 1}</div>
+                      <div className="set-chip-value">{r}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
 
-          {progression ? (
+          {results.length > 0 && results.map((o) => {
+            const label = EXERCISE_CONFIGS[o.exercise.exercise_name]?.label || o.exercise.exercise_name;
+            return (
+              <div key={o.exercise.id} className="row">
+                <div className="avatar-row">
+                  <ExerciseFigure exercise={o.exercise.exercise_name} label={label} size={40} />
+                  <div>
+                    <div className="row-title">{label}</div>
+                    <div className="row-sub tnum">{o.reps.join(' · ')}</div>
+                    {!o.logged && <div className="dim row-sub">Could not be saved</div>}
+                  </div>
+                </div>
+                <span className={`badge ${o.logged && o.passed ? 'badge-pass' : 'badge-fail'}`}>
+                  {o.logged ? (o.passed ? 'PASS' : 'FAIL') : 'NOT SAVED'}
+                </span>
+              </div>
+            );
+          })}
+
+          {results.length === 0 && (
+            <div className="btn-row">
+              <button className="btn btn-accent" onClick={finishWorkout} disabled={saving}>
+                <Save size={18} strokeWidth={1.5} />
+                {saving ? 'Saving…' : 'Save & View Progress'}
+              </button>
+              <button className="btn btn-secondary" onClick={cancelSession} disabled={saving}>
+                Discard
+              </button>
+            </div>
+          )}
+
+          {/* A failed log must never be a dead end: retry is the primary
+              action here so the data has somewhere to go besides being
+              discarded by every other exit on this screen. */}
+          {results.length > 0 && results.some(o => !o.logged) && (
+            <button
+              className="btn btn-accent btn-block"
+              onClick={retryFailedLogs}
+              disabled={saving}
+            >
+              <Save size={18} strokeWidth={1.5} />
+              {saving ? 'Retrying…' : 'Retry failed'}
+            </button>
+          )}
+
+          {advancable.length > 0 && (
             <div className="card">
-              <p className="section-heading">Ready for Week {progression.nextWeek}?</p>
-              <p className="dim">
-                Next target: {progression.nextWeight > 0 ? `${formatWeight(progression.nextWeight)}kg × ` : ''}
-                {progression.nextReps} reps × {selectedPlan.target_sets} sets
-              </p>
+              <p className="section-heading">Ready to progress?</p>
+              {advancable.map((o) => {
+                const label = EXERCISE_CONFIGS[o.exercise.exercise_name]?.label || o.exercise.exercise_name;
+                const nextWeight = o.exercise.target_weight + (o.exercise.weight_increment || 0);
+                const nextReps = o.exercise.target_reps + (o.exercise.rep_increment || 0);
+                return (
+                  <p className="dim" key={o.exercise.id}>
+                    {label}: {nextWeight > 0 ? `${formatWeight(nextWeight)}kg × ` : ''}{nextReps} reps
+                  </p>
+                );
+              })}
               <div className="btn-row">
                 <button
                   className="btn btn-accent"
@@ -314,23 +396,22 @@ function WorkoutTab({
                   disabled={advancing}
                 >
                   <ArrowUp size={18} strokeWidth={1.5} />
-                  {advancing ? 'Creating…' : `Create Week ${progression.nextWeek}`}
+                  {advancing ? 'Creating…' : 'Confirm'}
                 </button>
                 <button className="btn btn-secondary" onClick={skipProgression}>
                   Skip
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="btn-row">
-              <button className="btn btn-accent" onClick={finishWorkout}>
-                <Save size={18} strokeWidth={1.5} />
-                Save &amp; View Progress
-              </button>
-              <button className="btn btn-secondary" onClick={cancelSession}>
-                Discard
-              </button>
-            </div>
+          )}
+
+          {/* Nothing left to decide, but the per-exercise rows (a NOT SAVED
+              badge among them, maybe) are still worth reading before moving
+              on — no auto-navigate here, so give an explicit way out. */}
+          {results.length > 0 && advancable.length === 0 && (
+            <button className="btn btn-secondary btn-block" onClick={skipProgression}>
+              Done
+            </button>
           )}
         </>
       )}

@@ -1,22 +1,36 @@
 import { useRef, useState } from 'react';
-import { Plus, ChevronRight, ClipboardList } from 'lucide-react';
+import { Plus, ChevronRight, ClipboardList, Trash2 } from 'lucide-react';
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import ExercisePicker from '../components/ExercisePicker';
 import { formatWeight } from '../lib/format';
 
 function PlanTab({
-  plans, planName, setPlanName, planExercise, setPlanExercise, planSets, setPlanSets,
-  planReps, setPlanReps, planWeight, setPlanWeight, planWeightInc, setPlanWeightInc,
-  planRepInc, setPlanRepInc, planRest, setPlanRest, handleCreatePlan, onStartPlan,
+  plans, planName, setPlanName, planExerciseRest, setPlanExerciseRest,
+  planExercises, setPlanExercises, handleCreatePlan, onStartPlan, creatingPlan,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const exerciseTriggerRef = useRef(null);
-  const selectedLabel = EXERCISE_CONFIGS[planExercise]?.label || planExercise;
+  const addExerciseBtnRef = useRef(null);
 
   const closePicker = () => {
     setPickerOpen(false);
-    exerciseTriggerRef.current?.focus();
+    addExerciseBtnRef.current?.focus();
+  };
+
+  const addExercise = (exerciseName) => {
+    setPlanExercises(list => [...list, {
+      key: `${exerciseName}-${Date.now()}`,
+      exerciseName, sets: '3', reps: '10', weight: '0',
+      rest: '90', weightInc: '0', repInc: '0',
+    }]);
+  };
+
+  const updateExercise = (key, field, value) => {
+    setPlanExercises(list => list.map(ex => (ex.key === key ? { ...ex, [field]: value } : ex)));
+  };
+
+  const removeExercise = (key) => {
+    setPlanExercises(list => list.filter(ex => ex.key !== key));
   };
 
   return (
@@ -34,59 +48,117 @@ function PlanTab({
               onChange={e => setPlanName(e.target.value)}
             />
           </div>
+
           <div className="input-group">
-            <label className="label">Exercise</label>
-            <button
-              type="button"
-              className="exercise-trigger"
-              onClick={() => setPickerOpen(true)}
-              ref={exerciseTriggerRef}
-            >
-              <span className="exercise-trigger-info">
-                <ExerciseFigure exercise={planExercise} label={selectedLabel} size={32} />
-                <span>{selectedLabel}</span>
-              </span>
-              <ChevronRight size={20} strokeWidth={1.5} />
-            </button>
-          </div>
-          <div className="field-row input-group">
-            <div>
-              <label className="label">Sets</label>
-              <input type="number" min="1" placeholder="5" value={planSets} onChange={e => setPlanSets(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Reps / Set</label>
-              <input type="number" min="1" placeholder="10" value={planReps} onChange={e => setPlanReps(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Weight (kg)</label>
-              <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
-            </div>
+            <label className="label">Rest between exercises (seconds)</label>
+            <input
+              type="number"
+              min="0"
+              step="5"
+              placeholder="180"
+              value={planExerciseRest}
+              onChange={e => setPlanExerciseRest(e.target.value)}
+            />
           </div>
 
-          <div className="section-heading">Rest</div>
-          <p className="dim">Countdown between sets</p>
-          <div className="input-group">
-            <label className="label">Seconds</label>
-            <input type="number" min="0" step="5" placeholder="90" value={planRest} onChange={e => setPlanRest(e.target.value)} />
-          </div>
+          <div className="section-heading">Exercises</div>
+          {planExercises.length === 0 ? (
+            <p className="dim">No exercises added yet.</p>
+          ) : (
+            planExercises.map(ex => {
+              const label = EXERCISE_CONFIGS[ex.exerciseName]?.label || ex.exerciseName;
+              const weight = Number(ex.weight) || 0;
+              return (
+                <div key={ex.key} className="plan-exercise-card">
+                  <div className="plan-exercise-head">
+                    <span className="exercise-trigger-info">
+                      <ExerciseFigure exercise={ex.exerciseName} label={label} size={32} />
+                      <span>
+                        <div className="plan-exercise-name">{label}</div>
+                        <div className="plan-exercise-meta">
+                          {ex.sets}×{ex.reps}{weight > 0 ? ` @ ${formatWeight(weight)}kg` : ''}
+                        </div>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => removeExercise(ex.key)}
+                      aria-label={`Remove ${label}`}
+                    >
+                      <Trash2 size={18} strokeWidth={1.5} />
+                    </button>
+                  </div>
 
-          <div className="section-heading">Progression</div>
-          <p className="dim">On a passed workout, increase next week by</p>
-          <div className="field-row input-group">
-            <div>
-              <label className="label">Weight (kg)</label>
-              <input type="number" min="0" step="0.5" placeholder="0" value={planWeightInc} onChange={e => setPlanWeightInc(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Reps / Set</label>
-              <input type="number" min="0" step="1" placeholder="0" value={planRepInc} onChange={e => setPlanRepInc(e.target.value)} />
-            </div>
-          </div>
+                  <div className="field-row input-group">
+                    <div>
+                      <label className="label">Sets</label>
+                      <input
+                        type="number" min="1" value={ex.sets}
+                        onChange={e => updateExercise(ex.key, 'sets', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Reps / Set</label>
+                      <input
+                        type="number" min="1" value={ex.reps}
+                        onChange={e => updateExercise(ex.key, 'reps', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Weight (kg)</label>
+                      <input
+                        type="number" min="0" step="0.5" value={ex.weight}
+                        onChange={e => updateExercise(ex.key, 'weight', e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-          <button type="submit" className="btn btn-accent btn-block">
+                  <div className="field-row input-group">
+                    <div>
+                      <label className="label">Rest (s)</label>
+                      <input
+                        type="number" min="0" step="5" value={ex.rest}
+                        onChange={e => updateExercise(ex.key, 'rest', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Weight Inc.</label>
+                      <input
+                        type="number" min="0" step="0.5" value={ex.weightInc}
+                        onChange={e => updateExercise(ex.key, 'weightInc', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Rep Inc.</label>
+                      <input
+                        type="number" min="0" step="1" value={ex.repInc}
+                        onChange={e => updateExercise(ex.key, 'repInc', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            onClick={() => setPickerOpen(true)}
+            ref={addExerciseBtnRef}
+          >
             <Plus size={18} strokeWidth={1.5} />
-            Create Plan
+            Add exercise
+          </button>
+
+          <button
+            type="submit"
+            className="btn btn-accent btn-block"
+            disabled={planExercises.length === 0 || creatingPlan}
+          >
+            <Plus size={18} strokeWidth={1.5} />
+            {creatingPlan ? 'Creating…' : 'Create Plan'}
           </button>
         </form>
       </div>
@@ -103,7 +175,9 @@ function PlanTab({
             <div>
               <div className="row-title">{p.programName} · Week {p.week}</div>
               <div className="row-sub">
-                {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${formatWeight(p.target_weight)}kg` : ''}
+                {p.exercises.length === 1
+                  ? `${EXERCISE_CONFIGS[p.exercises[0].exercise_name]?.label || p.exercises[0].exercise_name} · ${p.exercises[0].target_sets}×${p.exercises[0].target_reps}${p.exercises[0].target_weight > 0 ? ` @ ${formatWeight(p.exercises[0].target_weight)}kg` : ''}`
+                  : p.exercises.map(ex => EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name).join(' · ')}
               </div>
             </div>
             <button className="icon-btn" onClick={() => onStartPlan(p)}>
@@ -115,8 +189,8 @@ function PlanTab({
 
       {pickerOpen && (
         <ExercisePicker
-          value={planExercise}
-          onSelect={setPlanExercise}
+          value={null}
+          onSelect={addExercise}
           onClose={closePicker}
         />
       )}
