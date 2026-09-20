@@ -145,6 +145,45 @@ body {
   font-size: 13px;
 }
 
+/* A broken rule, as opposed to .field-note's neutral guidance. Same metrics
+   so swapping one for the other does not shift the layout. */
+.field-error {
+  margin: -4px 0 16px;
+  font-size: 13px;
+  color: var(--fail-ink);
+}
+
+/* Live password requirements: every rule visible at once, ticking off as
+   you type, rather than one error revealed per submit. */
+.rule-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.rule-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rule-ok      { color: var(--pass-ink); }
+.rule-pending { color: var(--text-dim); }
+
+/* Stands in for the check icon so satisfied and unsatisfied rules keep the
+   same indent. */
+.rule-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid currentColor;
+  opacity: 0.4;
+  flex: 0 0 auto;
+}
+
 /* ─── Cards ─── */
 .card {
   background: var(--surface);
@@ -443,6 +482,25 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 }
 
 .tab-btn.active { color: var(--text); font-weight: 600; }
+
+/* Wraps the tab icon so the in-progress dot can sit on its corner without
+   the label shifting. */
+.tab-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.tab-dot {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  border: 1.5px solid var(--surface);
+}
+
 
 .tab-btn.active::after {
   content: '';
@@ -809,6 +867,43 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   font-size: 34vh;
   color: rgba(212, 240, 52, 0.55);
 }
+
+/* ─── Resume an unfinished workout ─── */
+/* Dark, unlike the plan cards below it, because it is not one more thing to
+   choose from — it is the one thing already underway. */
+.resume-card {
+  background: var(--surface-dark);
+  color: var(--text-on-dark);
+  border-radius: var(--r-card);
+  padding: 18px 20px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.resume-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.resume-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.resume-when   { font-size: 12px; color: #A1A1A6; }
+.resume-plan   { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.resume-detail { font-size: 13px; color: #A1A1A6; margin: 2px 0 16px; }
 
 /* ─── Plan cards (Workout tab) ─── */
 .plan-grid {

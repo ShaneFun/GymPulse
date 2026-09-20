@@ -40,7 +40,38 @@ export function AuthProvider({ children }) {
 
   const signOut = () => supabase.auth.signOut();
 
-  const value = { session, user: session?.user ?? null, loading, signIn, signOut };
+  // Supabase lets a signed-in user set a new password without proving they
+  // know the old one. That is a real hazard on a phone left unlocked, so
+  // re-authenticate first and refuse if the current password is wrong.
+  const changePassword = async (currentPassword, newPassword) => {
+    const email = session?.user?.email;
+    if (!email) throw new Error('You are not signed in.');
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email, password: currentPassword,
+    });
+    if (reauthError) throw new Error('Your current password is not correct.');
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  };
+
+  // Does not take effect immediately: Supabase emails a confirmation link to
+  // the new address, and the old one keeps working until it is clicked.
+  const changeEmail = async (newEmail) => {
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    if (error) throw new Error(error.message);
+  };
+
+  const value = {
+    session,
+    user: session?.user ?? null,
+    loading,
+    signIn,
+    signOut,
+    changePassword,
+    changeEmail,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

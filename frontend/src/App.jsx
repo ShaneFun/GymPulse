@@ -8,6 +8,7 @@ import {
 import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
 import { primeAudio, say } from './lib/beep';
 import { isAdvancable } from './lib/advancable';
+import { clearSession, loadSession, resumablePlan, saveSession } from './lib/workoutSession';
 import WorkoutTab from './tabs/WorkoutTab';
 import PlanTab from './tabs/PlanTab';
 import ProgressTab from './tabs/ProgressTab';
@@ -64,12 +65,34 @@ function App() {
   const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
   const [saving, setSaving] = useState(false); // in-flight guard for Save & retry-failed-logs
 
+  // A workout left unfinished when the page went away, read back from
+  // localStorage. Adjusted during render rather than in an effect: reading
+  // it at mount would miss the user signing in a moment later, and a
+  // setState inside an effect is what this eslint config rejects.
+  const [snapshotUserId, setSnapshotUserId] = useState(undefined);
+  const [snapshot, setSnapshot] = useState(null);
+  if (userId !== snapshotUserId) {
+    setSnapshotUserId(userId);
+    setSnapshot(loadSession(userId));
+  }
+
   // Derived above their first use (this eslint config errors on
   // use-before-declaration for const arrow functions that reference them).
   const currentExercise = selectedPlan?.exercises?.[exerciseIndex] ?? null;
   // The flat list becomes the current exercise's list, derived rather than
   // kept as a second piece of state, so the two can never disagree.
   const completedSets = completedByExercise[exerciseIndex] ?? [];
+
+  // A session is live whenever the machine is anywhere other than idle/done.
+  const sessionLive = sessionState === 'active'
+    || sessionState === 'resting'
+    || sessionState === 'getready';
+
+  // Only offer to resume when nothing is running and the snapshot still fits
+  // a plan that exists — see resumablePlan for what disqualifies one.
+  const resumePlan = sessionLive || sessionState === 'done'
+    ? null
+    : resumablePlan(snapshot, plans);
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
@@ -282,6 +305,11 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
 
   // ── Workout Session ───────────────────────────────────────────────────────
   const resetSession = () => {
+    // The one place a session ends for good — cancelled, finished and logged,
+    // or replaced by a new one. The saved snapshot goes with it, so the next
+    // visit to this tab is not offered a workout that is already over.
+    clearSession(userId);
+    setSnapshot(null);
     setSessionState('idle');
     setRestRemaining(0);
     setGetReadyRemaining(0);
@@ -368,6 +396,45 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
   };
 
   const addRestTime = (seconds) => setRestRemaining(r => Math.max(0, r + seconds));
+
+  // Mirror the session to localStorage so a reload — or iOS quietly
+  // discarding the tab while you were off reading something — can pick it
+  // back up. This only ever writes; clearing happens where a session
+  // genuinely ends (resetSession, discardResume), because an effect that
+  // cleared whenever nothing was running would wipe the snapshot on mount,
+  // which is precisely when it is needed.
+  //
+  // 'done' keeps saving too: the Done screen is where logs are written, and
+  // a reload there should not lose the sets that produced them.
+  useEffect(() => {
+    if (!userId || sessionState === 'idle' || !selectedPlan) return;
+    saveSession(userId, {
+      planId: selectedPlan.id,
+      exerciseIndex,
+      currentSet,
+      completedByExercise,
+    });
+  }, [userId, sessionState, selectedPlan, exerciseIndex, currentSet, completedByExercise]);
+
+  const resumeWorkout = () => {
+    if (!resumePlan) return;
+    setSelectedPlan(resumePlan);
+    setExerciseIndex(snapshot.exerciseIndex);
+    setCurrentSet(snapshot.currentSet);
+    setCompletedByExercise(snapshot.completedByExercise);
+    setLiveReps(0);
+    setRestRemaining(0);
+    setSnapshot(null);
+    // Straight into the lead-in rather than 'active': this tap is the user
+    // gesture iOS needs to unlock audio, and the phone is in their hand, not
+    // propped up facing them.
+    beginGetReady();
+  };
+
+  const discardResume = () => {
+    clearSession(userId);
+    setSnapshot(null);
+  };
 
   // Lead-in. The camera mounts and warms during this, so the set starts
   // against a live feed rather than a cold one.
@@ -559,11 +626,14 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
 
         {/* Kept mounted (merely hidden) while a session is active: unmounting
             would tear down the camera and reset the rep counter mid-set. */}
-        {(activeTab === 'counter' || sessionState === 'active'
-          || sessionState === 'resting' || sessionState === 'getready') && (
+        {(activeTab === 'counter' || sessionLive) && (
           <div hidden={activeTab !== 'counter'}>
           <WorkoutTab
             plans={plans}
+            resumePlan={resumePlan}
+            resumeSnapshot={snapshot}
+            onResumeWorkout={resumeWorkout}
+            onDiscardResume={discardResume}
             selectedPlan={selectedPlan}
             setSelectedPlan={setSelectedPlan}
             sessionState={sessionState}
@@ -641,7 +711,14 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
             className={`tab-btn ${activeTab === key ? 'active' : ''}`}
             onClick={() => setActiveTab(key)}
           >
-            <Icon size={22} strokeWidth={1.5} />
+            <span className="tab-icon">
+              <Icon size={22} strokeWidth={1.5} />
+              {/* A workout is running, or one is waiting to be picked back
+                  up — visible from whichever tab you wandered off to. */}
+              {key === 'counter' && (sessionLive || resumePlan) && (
+                <span className="tab-dot" aria-label="Workout in progress" />
+              )}
+            </span>
             {label}
           </button>
         ))}

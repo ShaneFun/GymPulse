@@ -15,6 +15,11 @@ import { X } from 'lucide-react';
 //  inputType   — 'text' | 'tel' | 'number'
 //  inputProps  — extra props spread onto the <input> (min/max/maxLength/
 //                autoComplete/inputMode/placeholder/etc.)
+//  hint        — optional line of guidance shown under the input while the
+//                draft is valid, e.g. the allowed length
+//  validate    — optional (draft) => error string, '' when valid; run on
+//                every keystroke so the message appears as you type rather
+//                than only on submit
 //  onSave(nextValue) — called on submit; may reject/throw, in which case the
 //                editor stays open and shows an inline error instead of
 //                closing
@@ -23,7 +28,9 @@ import { X } from 'lucide-react';
 //                returning focus to whatever opened the editor
 //  saving      — true while a save is in flight; disables the form and
 //                shows "Saving…"
-function FieldEditor({ label, value, inputType, inputProps, onSave, onClose, saving }) {
+function FieldEditor({
+  label, value, inputType, inputProps, hint, validate, onSave, onClose, saving,
+}) {
   const uid = useId();
   const headingId = `${uid}-heading`;
   const inputId = `${uid}-input`;
@@ -51,17 +58,28 @@ function FieldEditor({ label, value, inputType, inputProps, onSave, onClose, sav
   }, [onClose]);
 
   const isUnchanged = draft === value;
+  // Derived, not state: keeping a second copy in sync with `draft` via an
+  // effect is exactly the setState-in-effect this eslint config rejects.
+  const validationError = validate ? validate(draft) : '';
+  const canSave = !saving && !isUnchanged && !validationError;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (saving || isUnchanged) return;
+    if (!canSave) return;
     setError('');
     try {
       await onSave(draft);
-    } catch {
-      setError('Could not save. Please try again.');
+    } catch (err) {
+      // A rejected save usually carries the backend's own message, which is
+      // more useful than "something went wrong" -- it names the rule broken.
+      const detail = err?.response?.data?.detail;
+      const raw = detail?.[0]?.msg || (typeof detail === 'string' ? detail : '');
+      setError(raw.replace(/^Value error, /, '') || 'Could not save. Please try again.');
     }
   };
+
+  // The live rule wins over a stale failure from the previous attempt.
+  const message = validationError || error;
 
   return (
     <div className="picker-overlay" role="dialog" aria-modal="true" aria-labelledby={headingId}>
@@ -83,13 +101,19 @@ function FieldEditor({ label, value, inputType, inputProps, onSave, onClose, sav
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               disabled={saving}
+              aria-invalid={message ? 'true' : undefined}
+              aria-describedby={message || hint ? `${uid}-note` : undefined}
               {...inputProps}
             />
           </div>
 
-          {error && <p className="dim field-note">{error}</p>}
+          {message ? (
+            <p id={`${uid}-note`} className="field-error" role="alert">{message}</p>
+          ) : hint ? (
+            <p id={`${uid}-note`} className="dim field-note">{hint}</p>
+          ) : null}
 
-          <button type="submit" className="btn btn-accent btn-block" disabled={saving || isUnchanged}>
+          <button type="submit" className="btn btn-accent btn-block" disabled={!canSave}>
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button type="button" className="btn btn-secondary btn-block" onClick={onClose} disabled={saving}>

@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ChevronRight, LogOut, User } from 'lucide-react';
+import { Camera, ChevronRight, KeyRound, LogOut, User } from 'lucide-react';
 import { formatWeight } from '../lib/format';
 import { fitnessApi } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { avatarUrl, uploadAvatar } from '../lib/avatar';
 import FieldEditor from '../components/FieldEditor';
+import PasswordEditor from '../components/PasswordEditor';
+import {
+  EARLIEST_BIRTH_YEAR, MAX_NAME_LENGTH, MAX_PHONE_DIGITS, MIN_AGE_YEARS,
+  MIN_NAME_LENGTH, MIN_PHONE_DIGITS,
+  validateBirthYear, validateEmail, validateName, validatePhone,
+} from '../lib/validation';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
@@ -50,22 +56,29 @@ const personalBests = (history) => {
 
 // Server fields as edited via FieldEditor; birth_year is kept as a string
 // here so an empty input can be distinguished from a real year.
-const fieldsFromProfile = (profile) => ({
+const fieldsFromProfile = (profile, user) => ({
   displayName: profile?.display_name || '',
   phone: profile?.phone || '',
   birthYear: profile?.birth_year != null ? String(profile.birth_year) : '',
+  // Not from the profile row: the email of record lives in Supabase Auth.
+  email: user?.email || '',
 });
 
-// One entry per editable row: how to present it in FieldEditor, and how to
-// turn its draft string back into a PUT /profile payload. Each save sends
-// only its own key — the backend uses exclude_unset, so the other fields
-// are left untouched.
+const LATEST_BIRTH_YEAR = new Date().getFullYear() - MIN_AGE_YEARS;
+
+// One entry per editable row: how to present it in FieldEditor, how to
+// validate the draft, and how to turn it back into a PUT /profile payload.
+// Each save sends only its own key — the backend uses exclude_unset, so the
+// other fields are left untouched. `validate` mirrors the Pydantic rules in
+// backend/app/main.py, so a mistake is an inline message, not a 422.
 const FIELDS = {
   displayName: {
     apiKey: 'display_name',
     label: 'Name',
     inputType: 'text',
-    inputProps: { autoComplete: 'name', placeholder: 'Add your name' },
+    inputProps: { autoComplete: 'name', placeholder: 'Add your name', maxLength: MAX_NAME_LENGTH },
+    hint: `${MIN_NAME_LENGTH}–${MAX_NAME_LENGTH} letters. Leave blank to remove it.`,
+    validate: validateName,
     toPayloadValue: (v) => (v.trim() ? v.trim() : null),
   },
   phone: {
@@ -73,25 +86,49 @@ const FIELDS = {
     label: 'Phone',
     inputType: 'tel',
     inputProps: { autoComplete: 'tel', inputMode: 'tel', placeholder: 'Add a phone number' },
+    hint: `${MIN_PHONE_DIGITS}–${MAX_PHONE_DIGITS} digits, with an optional country code.`,
+    validate: validatePhone,
     toPayloadValue: (v) => (v.trim() ? v.trim() : null),
   },
   birthYear: {
     apiKey: 'birth_year',
     label: 'Year of birth',
     inputType: 'number',
-    inputProps: { min: '1900', max: '2100', placeholder: 'Add your year of birth' },
+    inputProps: {
+      inputMode: 'numeric',
+      min: String(EARLIEST_BIRTH_YEAR),
+      max: String(LATEST_BIRTH_YEAR),
+      placeholder: 'Add your year of birth',
+    },
+    hint: `Between ${EARLIEST_BIRTH_YEAR} and ${LATEST_BIRTH_YEAR}.`,
+    validate: validateBirthYear,
     toPayloadValue: (v) => (v.trim() ? parseInt(v, 10) : null),
+  },
+  email: {
+    // Not a profile column — this one lives in Supabase Auth, so it saves
+    // through changeEmail() rather than PUT /profile.
+    label: 'Email',
+    inputType: 'email',
+    inputProps: { autoComplete: 'email', inputMode: 'email' },
+    hint: 'We’ll send a confirmation link to the new address. Your current one keeps working until you click it.',
+    validate: validateEmail,
   },
 };
 
 function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, changeEmail, changePassword } = useAuth();
   const bests = personalBests(workoutHistory);
   const totalRepsSum = workoutHistory.reduce((a, log) => a + totalReps(log), 0);
 
   const [profile, setProfile] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [fieldSaving, setFieldSaving] = useState(false);
+  // Shown after an email change is requested; the address only moves once
+  // the link in the new inbox is clicked, so say so.
+  const [emailNotice, setEmailNotice] = useState('');
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordNotice, setPasswordNotice] = useState('');
 
   const [avatarPath, setAvatarPath] = useState(null);
   const [avatarSrc, setAvatarSrc] = useState(null);
@@ -102,7 +139,14 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
   const nameRowRef = useRef(null);
   const phoneRowRef = useRef(null);
   const birthYearRowRef = useRef(null);
-  const rowRefs = { displayName: nameRowRef, phone: phoneRowRef, birthYear: birthYearRowRef };
+  const emailRowRef = useRef(null);
+  const passwordRowRef = useRef(null);
+  const rowRefs = {
+    displayName: nameRowRef,
+    phone: phoneRowRef,
+    birthYear: birthYearRowRef,
+    email: emailRowRef,
+  };
 
   useEffect(() => {
     let active = true;
@@ -140,16 +184,40 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
     if (!field) return;
     setFieldSaving(true);
     try {
-      const res = await fitnessApi.updateProfile({ [field.apiKey]: field.toPayloadValue(nextValue) });
-      const data = res.data?.data || {};
-      setProfile(data);
+      if (editingField === 'email') {
+        const address = nextValue.trim();
+        await changeEmail(address);
+        setEmailNotice(`Confirmation sent to ${address}. Your email changes once you click the link.`);
+      } else {
+        const res = await fitnessApi.updateProfile({
+          [field.apiKey]: field.toPayloadValue(nextValue),
+        });
+        setProfile(res.data?.data || {});
+      }
       closeFieldEditor();
     } catch (err) {
-      console.error('updateProfile:', err);
+      console.error('save profile field:', editingField, err);
       throw err;
     } finally {
       setFieldSaving(false);
     }
+  };
+
+  const handlePasswordSave = async ({ currentPassword, newPassword }) => {
+    setPasswordSaving(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setPasswordOpen(false);
+      setPasswordNotice('Password changed.');
+      passwordRowRef.current?.focus();
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const closePasswordEditor = () => {
+    setPasswordOpen(false);
+    passwordRowRef.current?.focus();
   };
 
   const handleAvatarChange = async (e) => {
@@ -292,13 +360,17 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
         <ChevronRight className="dim" size={20} strokeWidth={1.5} />
       </button>
 
-      <div className="row">
+      <button type="button" className="row" onClick={() => setEditingField('email')} ref={emailRowRef}>
         <div>
           <div className="row-title">Email</div>
           <div className="row-sub">{user.email}</div>
         </div>
-      </div>
-      <p className="dim field-note">Your email can&rsquo;t be changed here.</p>
+        <ChevronRight className="dim" size={20} strokeWidth={1.5} />
+      </button>
+      {user.new_email && (
+        <p className="dim field-note">Pending: {user.new_email} — check that inbox to confirm.</p>
+      )}
+      {emailNotice && <p className="dim field-note">{emailNotice}</p>}
 
       <button type="button" className="row" onClick={() => setEditingField('phone')} ref={phoneRowRef}>
         <div>
@@ -318,6 +390,20 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
         <ChevronRight className="dim" size={20} strokeWidth={1.5} />
       </button>
 
+      <button
+        type="button"
+        className="row"
+        onClick={() => { setPasswordNotice(''); setPasswordOpen(true); }}
+        ref={passwordRowRef}
+      >
+        <div>
+          <div className="row-title">Password</div>
+          <div className="row-sub">Change your password</div>
+        </div>
+        <KeyRound className="dim" size={20} strokeWidth={1.5} />
+      </button>
+      {passwordNotice && <p className="dim field-note">{passwordNotice}</p>}
+
       <button className="btn btn-secondary btn-block" onClick={signOut}>
         <LogOut size={18} strokeWidth={1.5} />
         Sign out
@@ -326,12 +412,22 @@ function MeTab({ workoutHistory, autoCamera, setAutoCamera }) {
       {editingConfig && (
         <FieldEditor
           label={editingConfig.label}
-          value={fieldsFromProfile(profile)[editingField]}
+          value={fieldsFromProfile(profile, user)[editingField]}
           inputType={editingConfig.inputType}
           inputProps={editingConfig.inputProps}
+          hint={editingConfig.hint}
+          validate={editingConfig.validate}
           onSave={handleFieldSave}
           onClose={closeFieldEditor}
           saving={fieldSaving}
+        />
+      )}
+
+      {passwordOpen && (
+        <PasswordEditor
+          onSave={handlePasswordSave}
+          onClose={closePasswordEditor}
+          saving={passwordSaving}
         />
       )}
     </div>

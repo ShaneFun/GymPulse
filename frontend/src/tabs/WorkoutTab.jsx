@@ -5,6 +5,7 @@ import ExerciseFigure from '../components/ExerciseFigure';
 import { formatWeight } from '../lib/format';
 import { say, beep, primeAudio } from '../lib/beep';
 import { isAdvancable } from '../lib/advancable';
+import { timeAgo } from '../lib/workoutSession';
 
 // No-op defaults so the control row can render (and stay disabled-feeling)
 // before AICameraCounter's first onControls handoff lands.
@@ -27,8 +28,16 @@ function WorkoutTab({
   completedByExercise, liveReps, setLiveReps, cameraResetKey, autoCamera, results,
   advancing, saving, startSession, doneSet, finishWorkout, retryFailedLogs, confirmProgression,
   skipProgression, cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
+  resumePlan, resumeSnapshot, onResumeWorkout, onDiscardResume,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
+
+  // Where the unfinished workout left off. Null unless there is one to
+  // resume — App only passes a plan through once the snapshot still fits it.
+  const resumeExercise = resumePlan?.exercises?.[resumeSnapshot?.exerciseIndex] ?? null;
+  const resumeExerciseLabel = resumeExercise
+    ? (EXERCISE_CONFIGS[resumeExercise.exercise_name]?.label || resumeExercise.exercise_name)
+    : '';
 
   // Reps left in this set, or null when there is no active target. Drives both
   // the on-screen countdown and the beeps.
@@ -86,7 +95,34 @@ function WorkoutTab({
     <div>
       <h1 className="screen-heading">Workout</h1>
 
-      {/* IDLE — Plan selector */}
+      {/* IDLE — resume offer, then the plan selector */}
+      {sessionState === 'idle' && resumePlan && (
+        <div className="resume-card">
+          <div className="resume-head">
+            <span className="resume-badge">In progress</span>
+            <span className="resume-when">{timeAgo(resumeSnapshot.startedAt)}</span>
+          </div>
+          <div className="resume-plan">{resumePlan.programName}</div>
+          <div className="resume-detail">
+            {resumeExerciseLabel}
+            {resumePlan.exercises.length > 1 && (
+              <> · exercise {resumeSnapshot.exerciseIndex + 1} of {resumePlan.exercises.length}</>
+            )}
+            {' · '}set {resumeSnapshot.currentSet} of {resumeExercise.target_sets}
+          </div>
+          <div className="btn-row">
+            <button type="button" className="btn btn-accent" onClick={onResumeWorkout}>
+              <Play size={18} strokeWidth={1.5} />
+              Continue
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={onDiscardResume}>
+              <X size={18} strokeWidth={1.5} />
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {sessionState === 'idle' && (
         <div>
           {plans.length === 0 ? (

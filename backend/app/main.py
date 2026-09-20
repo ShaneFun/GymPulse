@@ -1,9 +1,10 @@
 import os
+import re
 from datetime import datetime, timezone
 
 import httpx
 import jwt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from fastapi import FastAPI, HTTPException, Header, Depends
 from supabase import create_client, Client, ClientOptions
 from postgrest.exceptions import APIError
@@ -166,11 +167,80 @@ class PlanCreate(BaseModel):
     # a half-built program.
     exercises: list[PlanExerciseCreate] = Field(min_length=1)
 
+# Characters a name may contain besides letters. Deliberately narrow: this is
+# a display name, not free text, and it is rendered straight into the page.
+_NAME_PUNCTUATION = " -'."
+
+# Separators people type into a phone number, all meaningless to the number
+# itself.   is the non-breaking space iOS inserts when pasting.
+_PHONE_SEPARATORS = " -(). "
+
+# The frontend validates these same rules so the user gets an inline message
+# rather than a 422. They live here as well because the API is reachable
+# without the UI, and the UI being polite is not a constraint.
+MIN_NAME_LENGTH = 2
+MAX_NAME_LENGTH = 50
+MIN_PHONE_DIGITS = 7
+MAX_PHONE_DIGITS = 15   # E.164's ceiling
+EARLIEST_BIRTH_YEAR = 1900
+MIN_AGE_YEARS = 10      # a sanity check on typos, not an age gate
+
+
 class ProfileUpdate(BaseModel):
     display_name: str | None = None
     phone: str | None = None
-    birth_year: int | None = Field(default=None, ge=1900, le=2100)
+    birth_year: int | None = None
     avatar_path: str | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _check_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        name = value.strip()
+        # An empty input means "remove my name", not "store an empty string".
+        if not name:
+            return None
+        if not MIN_NAME_LENGTH <= len(name) <= MAX_NAME_LENGTH:
+            raise ValueError(
+                f"Name must be {MIN_NAME_LENGTH}-{MAX_NAME_LENGTH} characters."
+            )
+        # isalpha() is Unicode-aware, so accented and non-Latin names pass
+        # while digits and symbols do not.
+        if not all(ch.isalpha() or ch in _NAME_PUNCTUATION for ch in name):
+            raise ValueError("Name can only contain letters, spaces, hyphens and apostrophes.")
+        return name
+
+    @field_validator("phone")
+    @classmethod
+    def _check_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        compact = "".join(ch for ch in value if ch not in _PHONE_SEPARATORS)
+        if not compact:
+            return None
+        # Store one canonical form, so the same number typed two ways is not
+        # two different strings in the database.
+        digits = compact[1:] if compact.startswith("+") else compact
+        if not re.fullmatch(r"[0-9]+", digits):
+            raise ValueError("Phone number can only contain digits, spaces and + - ( ).")
+        if not MIN_PHONE_DIGITS <= len(digits) <= MAX_PHONE_DIGITS:
+            raise ValueError(
+                f"Phone number must have {MIN_PHONE_DIGITS}-{MAX_PHONE_DIGITS} digits."
+            )
+        return ("+" if compact.startswith("+") else "") + digits
+
+    @field_validator("birth_year")
+    @classmethod
+    def _check_birth_year(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        # Computed per call rather than pinned as a constant, so this does not
+        # quietly start rejecting the current year on New Year's Day.
+        latest = datetime.now(timezone.utc).year - MIN_AGE_YEARS
+        if not EARLIEST_BIRTH_YEAR <= value <= latest:
+            raise ValueError(f"Year of birth must be between {EARLIEST_BIRTH_YEAR} and {latest}.")
+        return value
 
 class WorkoutLogCreate(BaseModel):
     schedule_id: str     
