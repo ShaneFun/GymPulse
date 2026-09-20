@@ -33,13 +33,9 @@ apiClient.interceptors.response.use(
 );
 
 export const fitnessApi = {
-  // Feature 1: Programs
   getPrograms: () => apiClient.get('/programs'),
-  createProgram: (name) => apiClient.post('/programs', { name }),
 
-  // Feature 2: Schedules
   getSchedules: (programId) => apiClient.get(`/schedules?program_id=${programId}`),
-  createSchedule: (scheduleData) => apiClient.post('/schedules', scheduleData),
   advanceSchedule: (scheduleId) => apiClient.post(`/schedules/${scheduleId}/advance`),
   createPlan: (planData) => apiClient.post('/plans', planData),
 

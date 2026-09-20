@@ -31,6 +31,14 @@ def test_create_plan_makes_a_program_and_one_schedule_per_exercise(client, fake_
     assert len(fake_db.table("schedules").rows) == 2
 
 
+def test_create_plan_ignores_user_id_in_body(client, fake_db):
+    """Ownership comes from the token, never from client input."""
+    response = client.post("/plans", json={**PLAN, "user_id": "someone-else"})
+
+    assert response.status_code == 200
+    assert fake_db.table("programs").rows[0]["user_id"] == TEST_USER_ID
+
+
 def test_create_plan_puts_every_exercise_on_week_one(client, fake_db):
     client.post("/plans", json=PLAN)
 

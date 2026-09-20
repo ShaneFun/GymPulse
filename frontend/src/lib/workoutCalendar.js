@@ -24,7 +24,7 @@ const totalReps = (log) => (log.actual_reps || []).reduce((a, b) => a + b, 0);
  *
  * Returns a Set of log ids.
  */
-export function personalBestLogIds(history) {
+function personalBestLogIds(history) {
   const chronological = [...history].sort(
     (a, b) => new Date(a.created_at) - new Date(b.created_at)
   );

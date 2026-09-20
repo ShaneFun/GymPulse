@@ -128,21 +128,6 @@ def _map_supabase_error(e: Exception) -> HTTPException:
     print(f"Unhandled Supabase error (APIError={isinstance(e, APIError)}): {e!r}")
     return HTTPException(status_code=500, detail="Internal server error.")
 
-class ProgramCreate(BaseModel):
-    name: str
-
-class ScheduleCreate(BaseModel):
-    program_id: str
-    week: int
-    exercise_name: str
-    target_weight: float
-    target_sets: int
-    target_reps: int
-    notes: str | None = None
-    weight_increment: float = Field(default=0, ge=0)
-    rep_increment: int = Field(default=0, ge=0)
-    rest_seconds: int = Field(default=90, ge=0)
-
 class PlannedDayCreate(BaseModel):
     # ISO date, e.g. "2026-09-22". Stored as a real date column, so
     # Postgres rejects anything malformed rather than storing junk.
@@ -253,24 +238,6 @@ def home ():
     return {
         "message":"AI fitness Analyzer API Running"
     }
-
-@app.post("/programs")
-def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), user_id: str = Depends(get_user_id)):
-    try:
-        response = db.table("programs").insert({"name": program.name, "user_id": user_id}).execute()
-
-        if len(response.data) == 0:
-            raise HTTPException(status_code=400, detail="failed to write to database.")
-        
-        return {
-            "message":"Program successfully saved to database!",
-            "data": response.data[0]
-        
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _map_supabase_error(e)
 
 @app.put("/plans/{program_id}")
 def update_plan(
@@ -534,30 +501,6 @@ def update_profile(
         raise _map_supabase_error(e)
 
 
-@app.post("/schedules")
-def create_schedule(schedule: ScheduleCreate, db: Client = Depends(get_supabase)):
-    try:
-
-        response = db.table("schedules").insert({
-            "program_id": schedule.program_id,
-            "week": schedule.week,
-            "exercise_name": schedule.exercise_name,
-            "target_weight": schedule.target_weight,
-            "target_sets": schedule.target_sets,
-            "target_reps": schedule.target_reps,
-            "weight_increment": schedule.weight_increment,
-            "rep_increment": schedule.rep_increment,
-            "rest_seconds": schedule.rest_seconds
-        }).execute()
-        
-        if len(response.data) == 0:
-            raise HTTPException(status_code=400, detail="Failed to create schedule.")
-        return {"message": "Schedule rule saved!", "data": response.data[0]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _map_supabase_error(e)
-
 @app.post("/schedules/{schedule_id}/advance")
 def advance_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
     try:
@@ -689,18 +632,6 @@ def get_schedules_by_program(program_id: str, db: Client = Depends(get_supabase)
         raise
     except Exception as e:
         raise _map_supabase_error(e)
-
-@app.get("/workout-logs")
-def get_logs_by_schedule(schedule_id: str, db: Client = Depends(get_supabase)):
-    try:
-        response = db.table("workout_logs").select("*").eq("schedule_id", schedule_id).execute()
-        return {"data": response.data}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _map_supabase_error(e)
-    
-# ---- GET Routes (Retrieving Data) ----
 
 @app.get("/analysis/{schedule_id}")
 def get_workout_analysis(schedule_id: str, db: Client = Depends(get_supabase)):

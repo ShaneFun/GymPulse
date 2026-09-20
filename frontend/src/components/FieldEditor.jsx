@@ -35,7 +35,6 @@ function FieldEditor({
   const headingId = `${uid}-heading`;
   const inputId = `${uid}-input`;
 
-  const closeBtnRef = useRef(null);
   const inputRef = useRef(null);
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState('');
@@ -85,7 +84,7 @@ function FieldEditor({
     <div className="picker-overlay" role="dialog" aria-modal="true" aria-labelledby={headingId}>
       <div className="picker-header">
         <h2 id={headingId} className="picker-title">{label}</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close" ref={closeBtnRef}>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <X size={20} strokeWidth={1.5} />
         </button>
       </div>

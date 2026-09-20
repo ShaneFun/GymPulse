@@ -36,7 +36,7 @@ export function validateName(value) {
 }
 
 /** Strips the separators people type, leaving an optional + and digits. */
-export function compactPhone(value) {
+function compactPhone(value) {
   return [...value].filter((ch) => !PHONE_SEPARATORS.includes(ch)).join('');
 }
 
