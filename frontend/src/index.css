@@ -986,3 +986,7 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 
 .plan-exercise-name { font-size: 15px; font-weight: 600; }
 .plan-exercise-meta { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+/* Three actions per plan row, so they stay a group rather than stretching. */
+.row-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.plan-form-head { margin-bottom: 16px; }

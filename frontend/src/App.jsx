@@ -39,6 +39,8 @@ function App() {
   const [planExerciseRest, setPlanExerciseRest] = useState('180');
   // Each entry is one exercise in the plan being built.
   const [planExercises, setPlanExercises] = useState([]);
+  // Non-null while editing an existing plan; the form is otherwise creating.
+  const [editingProgramId, setEditingProgramId] = useState(null);
   const [creatingPlan, setCreatingPlan] = useState(false); // in-flight guard for Create Plan
 
   // ── Counter Tab ──
@@ -175,6 +177,66 @@ function App() {
   };
 
   // ── Plan Creation ─────────────────────────────────────────────────────────
+  const planPayload = () => ({
+    name: planName.trim(),
+    exercise_rest_seconds: Math.max(0, Math.round(Number(planExerciseRest) || 0)),
+    exercises: planExercises.map(ex => ({
+      exercise_name: ex.exerciseName,
+      target_sets: Math.max(1, Math.round(Number(ex.sets) || 0)),
+      target_reps: Math.max(1, Math.round(Number(ex.reps) || 0)),
+      target_weight: Math.max(0, Number(ex.weight) || 0),
+      rest_seconds: Math.max(0, Math.round(Number(ex.rest) || 0)),
+      weight_increment: Math.max(0, Number(ex.weightInc) || 0),
+      rep_increment: Math.max(0, Math.round(Number(ex.repInc) || 0)),
+    })),
+  });
+
+  // Turn a grouped plan back into the form's draft shape.
+  const startEditingPlan = (plan) => {
+    setEditingProgramId(plan.programId);
+    setPlanName(plan.programName);
+    setPlanExerciseRest(String(plan.exerciseRestSeconds ?? 180));
+    setPlanExercises(plan.exercises.map(ex => ({
+      key: `${ex.exercise_name}-${ex.id}`,
+      exerciseName: ex.exercise_name,
+      sets: String(ex.target_sets ?? ''),
+      reps: String(ex.target_reps ?? ''),
+      weight: String(ex.target_weight ?? 0),
+      rest: String(ex.rest_seconds ?? 90),
+      weightInc: String(ex.weight_increment ?? 0),
+      repInc: String(ex.rep_increment ?? 0),
+    })));
+  };
+
+  const cancelEditingPlan = () => {
+    setEditingProgramId(null);
+    setPlanName('');
+    setPlanExerciseRest('180');
+    setPlanExercises([]);
+  };
+
+  const handleDeletePlan = async (plan) => {
+    const sessions = workoutHistory.filter(
+      h => plan.exercises.some(ex => ex.id === h.schedule_id)
+    ).length;
+    const note = sessions > 0
+      ? `
+
+${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your history.`
+      : '';
+    if (!window.confirm(`Delete "${plan.programName}"?${note}`)) return;
+
+    try {
+      await fitnessApi.deletePlan(plan.programId);
+      if (selectedPlan?.programId === plan.programId) setSelectedPlan(null);
+      if (editingProgramId === plan.programId) cancelEditingPlan();
+      await loadPlans();
+      await loadHistory();
+    } catch (err) {
+      alert('Error deleting plan: ' + err.message);
+    }
+  };
+
   const handleCreatePlan = async (e) => {
     e.preventDefault();
     if (creatingPlan) return;
@@ -194,27 +256,24 @@ function App() {
 
     setCreatingPlan(true);
     try {
-      await fitnessApi.createPlan({
-        name: planName.trim(),
-        exercise_rest_seconds: Math.max(0, Math.round(Number(planExerciseRest) || 0)),
-        exercises: planExercises.map(ex => ({
-          exercise_name: ex.exerciseName,
-          target_sets: Math.max(1, Math.round(Number(ex.sets) || 0)),
-          target_reps: Math.max(1, Math.round(Number(ex.reps) || 0)),
-          target_weight: Math.max(0, Number(ex.weight) || 0),
-          rest_seconds: Math.max(0, Math.round(Number(ex.rest) || 0)),
-          weight_increment: Math.max(0, Number(ex.weightInc) || 0),
-          rep_increment: Math.max(0, Math.round(Number(ex.repInc) || 0)),
-        })),
-      });
+      // Same payload either way: editing replaces the plan wholesale, which
+      // is what lets add, remove and edit be one operation.
+      if (editingProgramId) {
+        await fitnessApi.updatePlan(editingProgramId, planPayload());
+      } else {
+        await fitnessApi.createPlan(planPayload());
+      }
 
+      setEditingProgramId(null);
       setPlanName('');
       setPlanExerciseRest('180');
       setPlanExercises([]);
-      loadPlans();
+      await loadPlans();
+      // Targets may have changed, so the grading shown in Progress can move.
+      await loadHistory();
       return true;
     } catch (err) {
-      alert('Error creating plan: ' + err.message);
+      alert(`Error ${editingProgramId ? 'updating' : 'creating'} plan: ` + err.message);
       return false;
     } finally {
       setCreatingPlan(false);
@@ -543,6 +602,10 @@ function App() {
             planExerciseRest={planExerciseRest}
             setPlanExerciseRest={setPlanExerciseRest}
             planExercises={planExercises}
+            editingProgramId={editingProgramId}
+            onStartEditPlan={startEditingPlan}
+            onCancelEditPlan={cancelEditingPlan}
+            onDeletePlan={handleDeletePlan}
             setPlanExercises={setPlanExercises}
             handleCreatePlan={handleCreatePlan}
             onStartPlan={onStartPlan}

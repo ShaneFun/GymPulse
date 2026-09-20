@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Plus, ChevronRight, ClipboardList, Trash2, Check } from 'lucide-react';
+import { Plus, ChevronRight, ClipboardList, Trash2, Check, Pencil, X } from 'lucide-react';
 import { EXERCISE_CONFIGS } from '../AICameraCounter';
 import ExerciseFigure from '../components/ExerciseFigure';
 import ExercisePicker from '../components/ExercisePicker';
@@ -8,6 +8,7 @@ import { formatWeight } from '../lib/format';
 function PlanTab({
   plans, planName, setPlanName, planExerciseRest, setPlanExerciseRest,
   planExercises, setPlanExercises, handleCreatePlan, onStartPlan, creatingPlan,
+  editingProgramId, onStartEditPlan, onCancelEditPlan, onDeletePlan,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // The form starts closed so the tab opens on your plans, not a blank form.
@@ -52,6 +53,19 @@ function PlanTab({
 
       {formOpen && (
       <div className="card">
+        <div className="card-row plan-form-head">
+          <div className="row-title">
+            {editingProgramId ? 'Edit plan' : 'New plan'}
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => { onCancelEditPlan?.(); setFormOpen(false); }}
+            aria-label="Close"
+          >
+            <X size={18} strokeWidth={1.5} />
+          </button>
+        </div>
         <form
           onSubmit={async (e) => {
             // Close only on success -- a failed create keeps the form up with
@@ -204,9 +218,32 @@ function PlanTab({
                   : p.exercises.map(ex => EXERCISE_CONFIGS[ex.exercise_name]?.label || ex.exercise_name).join(' · ')}
               </div>
             </div>
-            <button className="icon-btn" onClick={() => onStartPlan(p)}>
-              <ChevronRight size={20} strokeWidth={1.5} />
-            </button>
+            <div className="row-actions">
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => { onStartEditPlan?.(p); setFormOpen(true); }}
+                aria-label={`Edit ${p.programName}`}
+              >
+                <Pencil size={18} strokeWidth={1.5} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => onDeletePlan?.(p)}
+                aria-label={`Delete ${p.programName}`}
+              >
+                <Trash2 size={18} strokeWidth={1.5} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => onStartPlan(p)}
+                aria-label={`Start ${p.programName}`}
+              >
+                <ChevronRight size={20} strokeWidth={1.5} />
+              </button>
+            </div>
           </div>
         ))
       )}

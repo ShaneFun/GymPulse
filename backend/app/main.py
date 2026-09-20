@@ -202,6 +202,96 @@ def create_program(program: ProgramCreate, db: Client = Depends(get_supabase), u
     except Exception as e:
         raise _map_supabase_error(e)
 
+@app.put("/plans/{program_id}")
+def update_plan(
+    program_id: str,
+    plan: PlanCreate,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    """Replace a plan's name, rest and full exercise list.
+
+    Taking the whole list is what makes adding, removing and editing
+    exercises one operation rather than three. Exercises left out have
+    their schedule deleted; their logged workouts survive, detached,
+    because workout_logs.schedule_id is ON DELETE SET NULL.
+    """
+    try:
+        owned = db.table("programs").select("id").eq("id", program_id).eq("user_id", user_id).execute()
+        if len(owned.data) == 0:
+            # 404 rather than 403: do not confirm that someone else's plan exists.
+            raise HTTPException(status_code=404, detail="Plan not found.")
+
+        db.table("programs").update({
+            "name": plan.name,
+            "exercise_rest_seconds": plan.exercise_rest_seconds
+        }).eq("id", program_id).execute()
+
+        existing = db.table("schedules").select("*").eq("program_id", program_id).execute()
+        by_name = {row["exercise_name"]: row for row in existing.data}
+        wanted = {e.exercise_name for e in plan.exercises}
+
+        for name, row in by_name.items():
+            if name not in wanted:
+                db.table("schedules").delete().eq("id", row["id"]).execute()
+
+        schedules = []
+        for exercise in plan.exercises:
+            values = {
+                "exercise_name": exercise.exercise_name,
+                "target_weight": exercise.target_weight,
+                "target_sets": exercise.target_sets,
+                "target_reps": exercise.target_reps,
+                "rest_seconds": exercise.rest_seconds,
+                "weight_increment": exercise.weight_increment,
+                "rep_increment": exercise.rep_increment,
+            }
+            if exercise.exercise_name in by_name:
+                # Every week of this exercise, so a progressed plan does not
+                # end up with week 1 edited and week 2 stale.
+                updated = db.table("schedules").update(values).eq(
+                    "program_id", program_id
+                ).eq("exercise_name", exercise.exercise_name).execute()
+                schedules.extend(updated.data or [])
+            else:
+                created = db.table("schedules").insert({
+                    **values, "program_id": program_id, "week": 1
+                }).execute()
+                schedules.extend(created.data or [])
+
+        return {"message": "Plan updated!", "data": {"schedules": schedules}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _map_supabase_error(e)
+
+
+@app.delete("/plans/{program_id}")
+def delete_plan(
+    program_id: str,
+    db: Client = Depends(get_supabase),
+    user_id: str = Depends(get_user_id),
+):
+    """Delete a plan and every week of it. Logged workouts are kept.
+
+    The schedules go, and workout_logs.schedule_id is ON DELETE SET NULL, so
+    history detaches rather than disappearing -- it still shows on the
+    calendar, graded against the snapshot each log carries.
+    """
+    try:
+        owned = db.table("programs").select("id").eq("id", program_id).eq("user_id", user_id).execute()
+        if len(owned.data) == 0:
+            raise HTTPException(status_code=404, detail="Plan not found.")
+
+        db.table("schedules").delete().eq("program_id", program_id).execute()
+        db.table("programs").delete().eq("id", program_id).execute()
+        return {"message": "Plan deleted. Your workout history was kept."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _map_supabase_error(e)
+
+
 @app.get("/planned-days")
 def list_planned_days(
     db: Client = Depends(get_supabase),
@@ -487,7 +577,14 @@ def create_workout_log(log: WorkoutLogCreate, db: Client = Depends(get_supabase)
             "schedule_id": log.schedule_id,
             "log_name": log.log_name,
             "actual_weight": log.actual_weight,
-            "actual_reps": log.actual_reps
+            "actual_reps": log.actual_reps,
+            # Snapshot what this was measured against. Two reasons: the log
+            # survives its plan being deleted, and editing a plan's targets
+            # later cannot retroactively change whether this passed.
+            "exercise_name": target.get("exercise_name"),
+            "target_sets": target_sets,
+            "target_reps": target_reps,
+            "target_weight": target_weight
         }).execute()
         
         if len(response.data) == 0:
@@ -549,17 +646,29 @@ def get_workout_analysis(schedule_id: str, db: Client = Depends(get_supabase)):
         t_reps = target["target_reps"]
 
         # Fetch logs
-        response = db.table("workout_logs").select("id", "log_name", "actual_weight", "actual_reps", "created_at").eq("schedule_id", schedule_id).execute()
+        response = db.table("workout_logs").select(
+            "id", "log_name", "actual_weight", "actual_reps", "created_at",
+            "exercise_name", "target_sets", "target_reps", "target_weight"
+        ).eq("schedule_id", schedule_id).execute()
         
         history = []
         for log in response.data:
             a_weight = log.get("actual_weight", 0)
             a_reps = log.get("actual_reps", [])
-            
+
+            # Grade against what the log itself recorded, falling back
+            # to the schedule only for rows written before snapshots
+            # existed. Using the current targets would re-grade history
+            # every time a plan is edited.
+            l_w, l_s, l_r = log.get("target_weight"), log.get("target_sets"), log.get("target_reps")
+            g_weight = t_weight if l_w is None else l_w
+            g_sets = t_sets if l_s is None else l_s
+            g_reps = t_reps if l_r is None else l_r
+
             if (
-                a_weight >= t_weight
-                and len(a_reps) >= t_sets
-                and all(rep >= t_reps for rep in a_reps)
+                a_weight >= g_weight
+                and len(a_reps) >= g_sets
+                and all(rep >= g_reps for rep in a_reps)
             ):
                 status = "PASS"
                 rec = "Move to next week's workout."

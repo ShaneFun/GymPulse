@@ -47,6 +47,9 @@ export const fitnessApi = {
   logWorkout: (logData) => apiClient.post('/workout-logs', logData),
   getAnalysis: (scheduleId) => apiClient.get(`/analysis/${scheduleId}`),
 
+  updatePlan: (programId, planData) => apiClient.put(`/plans/${programId}`, planData),
+  deletePlan: (programId) => apiClient.delete(`/plans/${programId}`),
+
   // Feature 6: Planned training days
   getPlannedDays: () => apiClient.get('/planned-days'),
   planDay: (day) => apiClient.post('/planned-days', { day }),
