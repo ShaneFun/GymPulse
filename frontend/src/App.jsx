@@ -15,6 +15,7 @@ import ProgressTab from './tabs/ProgressTab';
 import MeTab from './tabs/MeTab';
 import { useAuth } from './auth/AuthProvider';
 import LoginScreen from './auth/LoginScreen';
+import ResetPasswordScreen from './auth/ResetPasswordScreen';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -28,7 +29,7 @@ const TABS = [
 
 // ── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const { session, loading } = useAuth();
+  const { session, loading, recovery } = useAuth();
   const userId = session?.user?.id ?? null;
 
   // Navigation
@@ -616,6 +617,9 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) return <div className="empty">Loading…</div>;
+  // Before the session check, not after: a recovery link signs the user in,
+  // so they would otherwise land in the app with the reset unfinished.
+  if (recovery) return <ResetPasswordScreen />;
   if (!session) return <LoginScreen />;
 
   return (

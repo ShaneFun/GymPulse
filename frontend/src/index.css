@@ -661,6 +661,43 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
   color: var(--fail);
 }
 
+/* Secondary actions under the login form — switching mode, or starting a
+   password reset. Text, not buttons: they are detours, not the main path. */
+.login-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-btn:hover { color: var(--text); }
+
+/* The "check your email" state that replaces the form once one is sent. */
+.login-sent {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 32px 24px 24px;
+}
+
+.login-sent .screen-heading { margin: 0; }
+.login-sent p { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.login-sent .btn { margin-top: 4px; }
+
 /* ─── Motion & accessibility ─── */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

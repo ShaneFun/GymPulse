@@ -13,6 +13,10 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True between clicking a password-reset link and choosing a new password.
+  // Supabase signs the user in to do this, so without a flag they would land
+  // in the app with no idea the reset never completed.
+  const [recovery, setRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession()
@@ -28,8 +32,9 @@ export function AuthProvider({ children }) {
         setLoading(false);
       });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next);
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
     });
 
     return () => sub.subscription.unsubscribe();
@@ -38,7 +43,41 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) =>
     supabase.auth.signInWithPassword({ email, password });
 
-  const signOut = () => supabase.auth.signOut();
+  // Returns needsConfirmation: with "Confirm email" on, Supabase creates the
+  // user but no session, and the caller has to say "check your inbox"
+  // instead of dropping the user on a screen that looks like a failure.
+  const signUp = async (email, password) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) throw new Error(error.message);
+    return { needsConfirmation: !data.session };
+  };
+
+  // Supabase reports success even for an address that has no account, so
+  // that this cannot be used to discover who is registered. The UI has to
+  // be worded to match ("if that address has an account...").
+  const requestPasswordReset = async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw new Error(error.message);
+  };
+
+  // Finishes the flow the recovery link started. No current password is
+  // asked for here -- possession of the emailed link is the proof.
+  const completePasswordReset = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+    setRecovery(false);
+  };
+
+  const signOut = () => {
+    setRecovery(false);
+    return supabase.auth.signOut();
+  };
 
   // Supabase lets a signed-in user set a new password without proving they
   // know the old one. That is a real hazard on a phone left unlocked, so
@@ -67,8 +106,12 @@ export function AuthProvider({ children }) {
     session,
     user: session?.user ?? null,
     loading,
+    recovery,
     signIn,
+    signUp,
     signOut,
+    requestPasswordReset,
+    completePasswordReset,
     changePassword,
     changeEmail,
   };
