@@ -1,117 +1,141 @@
-<div align="center">
-  <h1>💪 GymPulse (AI Fitness Analyzer)</h1>
-  <p><strong>AI-powered fitness tracking using real-time computer vision and audio exertion detection.</strong></p>
+# GymPulse
 
-  <!-- Badges -->
-  <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/Frontend-React-blue?style=flat-square&logo=react" alt="React" /></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
-  <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
-  <a href="https://google.github.io/mediapipe/"><img src="https://img.shields.io/badge/AI-MediaPipe-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
-</div>
+A workout tracker that counts your reps through your phone's camera.
 
-<br />
+Set a plan — *3 sets of 10 bicep curls at 20 kg* — and GymPulse uses pose estimation to count each rep, calls the numbers out loud, times your rest, then grades the session against the target and offers to raise the weight next week if you passed.
 
-GymPulse is an intelligent web application designed to automatically track, count, and analyze your workout sessions. By leveraging **client-side machine learning**, the app evaluates your form and rep counts in real time, all without compromising your privacy.
+Pose estimation runs entirely in the browser. **No video ever leaves the device.**
 
-## 📋 Table of Contents
-- [✨ Key Features](#-key-features)
-- [🏗 Architecture & Tech Stack](#-architecture--tech-stack)
-- [⚙ Configuration](#-configuration)
-- [🚀 Getting Started](#-getting-started)
-- [🧠 How the AI Works](#-how-the-ai-works)
+## Features
 
----
+- **Camera rep counting** for eight exercises, using MediaPipe Pose and joint-angle geometry
+- **Spoken cues** — every rep called out, a "last three" warning, and a tone on the target
+- **Multi-exercise plans** with per-exercise targets, rest timers, and a longer break between exercises
+- **Automatic progression** — pass a session and GymPulse offers next week's plan with your chosen weight and rep increments applied
+- **Calendar view** of your history, colour-coded by personal best, pass, mixed or missed
+- **Resumable sessions** — an interrupted workout survives a reload and offers to continue
+- **Private by default** — row-level security scopes every row to its owner
 
-## ✨ Key Features
+## Stack
 
-- **📸 Computer Vision Rep Counting**
-  Tracks 8 different exercises (Squats, Bicep Curls, Push-ups, etc.) by mapping 33 3D anatomical body keypoints using the device camera.
-- **📊 Automated Analytics & Progression**
-  Logs your performance and compares it against your customized target schedules. Automatically assigns PASS/FAIL scores, and when you pass, offers to generate next week's plan with your chosen weight and rep increases already applied.
-- **📈 Visual Progress Dashboard**
-  Interactive charts tracking your strength progression and completion rates over time.
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, Chart.js |
+| Pose estimation | MediaPipe Pose (in-browser, WebAssembly) |
+| Backend | FastAPI (Python 3.11) |
+| Database & auth | Supabase — PostgreSQL, PostgREST, GoTrue, Storage |
 
----
+## Getting started
 
-## 🏗 Architecture & Tech Stack
+### Prerequisites
 
-### Frontend
-- **React.js & Vite**: Fast, modern UI development.
-- **HTML5 Canvas**: For drawing live skeletal overlay networks on top of the webcam feed.
-- **Chart.js**: For interactive data visualization.
+- Python 3.11+
+- Node.js 18+
+- A Supabase project
 
-### Backend
-- **FastAPI (Python)**: High-performance async API for schedule management and workout evaluation logic.
-- **Supabase**: PostgreSQL database for persistent logging and user tracking.
-
----
-
-## ⚙ Configuration
-
-GymPulse requires Supabase credentials to run. Before starting the app:
-
-1. **Copy environment files:**
-   ```bash
-   cp .env.example .env
-   cp frontend/.env.example frontend/.env
-   ```
-
-2. **Fill in your Supabase project details:**
-   - Open your [Supabase project dashboard](https://supabase.com/dashboard)
-   - In `.env` (root), set:
-     - `SUPABASE_URL` — your project URL (Settings → API → Project URL)
-     - `SUPABASE_KEY` — your project API key (Settings → API → Project API keys → anon public)
-   - In `frontend/.env`, set the same values:
-     - `VITE_SUPABASE_URL` — same project URL
-     - `VITE_SUPABASE_ANON_KEY` — same anon public key
-
-3. **Create a Supabase account:**
-   The app requires an existing user account to log in. Public signup is disabled, so you must sign up via your Supabase dashboard before using the app.
-
----
-
-## 🚀 Getting Started
-
-Follow these instructions to run the project locally.
-
-### 1. Backend Setup
+### 1. Configure
 
 ```bash
-# Navigate to project root and create a virtual environment
-cd "c:\Users\siangyou\Desktop\AI fitness Analyze"
-venv\Scripts\activate
+cp .env.example .env
+cp frontend/.env.example frontend/.env
+```
 
-# Activate the virtual environment
-source venv/Scripts/activate  # (On Windows)
-# source venv/bin/activate    # (On Mac/Linux)
+Fill both with your Supabase project URL and **publishable** (anon) key, from
+Dashboard → Settings → API. The backend reads `SUPABASE_URL` / `SUPABASE_KEY`;
+the frontend reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
 
-# Install dependencies
+> Use the publishable key, never the service role key — the latter bypasses
+> row-level security and would expose every user's data.
+
+### 2. Run the backend
+
+```bash
+python -m venv venv
+source venv/Scripts/activate      # Windows
+# source venv/bin/activate        # macOS / Linux
+
 pip install -r requirements.txt
-
-# Start the FastAPI server
 python backend/app/main.py
 ```
-*The API will be available at `http://localhost:8000`*
 
-### 2. Frontend Setup
+Serves on `http://127.0.0.1:8000`. There is no auto-reload — restart after
+changing `main.py`.
 
-Open a new terminal window:
+### 3. Run the frontend
+
 ```bash
-# Navigate to the frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start the development server
 npm run dev
 ```
-*The app will be available at `http://localhost:5173`*
 
----
+Serves on `http://localhost:5173` and proxies `/api` to the backend, so the
+app works unchanged from another device on the network.
 
-## 🧠 How the AI Works
+### 4. Create an account
 
-1. **Privacy-First Pose Estimation**: The Google MediaPipe Pose neural network runs entirely inside your browser via WebAssembly. **No video data is ever sent to a server.**
-2. **Kinematic Math**: The app extracts the coordinates for specific joints (e.g., Hip, Knee, Ankle for squats) and calculates the internal angles using vector trigonometry. 
-3. **State Machine & Signal Processing**: The raw angle data is passed through a 5-frame moving average filter to eliminate sensor jitter. The smoothed angles trigger state transitions (e.g., `down` -> `up`) to register perfect repetitions.
+Sign up on the login screen, or add a user from Dashboard → Authentication →
+Users. Email confirmation is required by default.
+
+## Using it from a phone
+
+The camera needs a secure context, so plain HTTP over a local IP will not
+work. [Tailscale](https://tailscale.com) is the simplest route:
+
+```bash
+tailscale serve --bg 5173
+```
+
+That publishes the dev server over HTTPS on your tailnet only.
+
+## Tests
+
+```bash
+pytest backend/tests -q      # 61 tests, no database required
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Backend tests run against an in-memory fake of the Supabase client, so the
+suite is fast and offline. The trade-off is that the fake has no schema and
+cannot catch a mismatch with the real database.
+
+## How rep counting works
+
+1. MediaPipe returns 33 body landmarks per frame.
+2. Three of them form the joint being measured — for a curl, shoulder, elbow and wrist. Two `atan2` calls give the angle between the limbs.
+3. A five-frame rolling average removes the jitter inherent in pose estimation.
+4. Two thresholds, not one, decide a rep: the angle must pass above the upper bound to arm and below the lower to fire. That gap is what stops a paused arm from counting repeatedly.
+
+Each exercise is five numbers — three landmark indices and two angles — so
+adding one means adding a config entry, not writing code.
+
+## Project structure
+
+```
+backend/
+  app/main.py          API — 11 endpoints
+  tests/               pytest suite and the Supabase fake
+frontend/src/
+  App.jsx              application state and the session machine
+  AICameraCounter.jsx  pose estimation and rep counting
+  api/client.js        HTTP client and auth token injection
+  auth/                sign in, sign up, password reset
+  tabs/                Workout, Plan, Progress, Me
+  lib/                 pure helpers — validation, calendar, audio
+```
+
+## Security
+
+Every table has row-level security enabled, with policies scoping rows to
+`auth.uid()`. The API carries the caller's JWT through to PostgREST, so the
+database — not application code — is the thing enforcing access.
+
+Policies do nothing while RLS is disabled on a table, and the two are set
+separately. After any schema change, verify the switch itself:
+
+```sql
+select relname, relrowsecurity
+from pg_class
+where relname in ('programs','schedules','workout_logs','profiles','planned_days');
+```
