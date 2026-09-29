@@ -7,6 +7,10 @@
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
   <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
   <a href="https://google.github.io/mediapipe/"><img src="https://img.shields.io/badge/AI-MediaPipe-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
+
+  <br /><br />
+  <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps" width="300" />
+  <p><em>Real-time pose tracking counting bicep curl reps, then starting the rest timer.</em></p>
 </div>
 
 <br />
