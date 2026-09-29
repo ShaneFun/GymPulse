@@ -1,6 +1,6 @@
 <div align="center">
   <h1>💪 GymPulse (AI Fitness Analyzer)</h1>
-  <p><strong>AI-powered fitness tracking using real-time computer vision and audio exertion detection.</strong></p>
+  <p><strong>AI-powered fitness tracking using real-time computer vision.</strong></p>
 
   <!-- Badges -->
   <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/Frontend-React-blue?style=flat-square&logo=react" alt="React" /></a>
