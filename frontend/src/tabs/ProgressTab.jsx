@@ -24,7 +24,9 @@ const STATE_LABEL = {
   fail: 'missed target',
 };
 
-function ProgressTab({ workoutHistory, chartData, chartOptions, plannedDays = [], onTogglePlannedDay }) {
+function ProgressTab({
+  workoutHistory, chartData, chartOptions, plannedDays = [], onTogglePlannedDay, loadFailed,
+}) {
   const days = groupByDay(workoutHistory);
 
   // Open on the most recent training day rather than today, so arriving here
@@ -56,7 +58,9 @@ function ProgressTab({ workoutHistory, chartData, chartOptions, plannedDays = []
       {workoutHistory.length === 0 ? (
         <div className="empty">
           <TrendingUp size={32} strokeWidth={1.5} />
-          <p>Complete a workout to see your progress here!</p>
+          <p>{loadFailed
+            ? 'Your history could not be loaded.'
+            : 'Complete a workout to see your progress here!'}</p>
         </div>
       ) : (
         <>

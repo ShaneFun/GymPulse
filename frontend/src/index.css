@@ -184,6 +184,27 @@ body {
   flex: 0 0 auto;
 }
 
+/* ─── Error banner ─── */
+/* Sits above every tab: a failed load empties all of them at once, and the
+   cause is the same in each. Tinted rather than loud -- it reports a
+   temporary condition, not a catastrophe. */
+.banner-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--r-inner);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--fail-ink);
+}
+
+.banner-error > div { flex: 1; min-width: 0; }
+.banner-error .btn { flex: 0 0 auto; }
+
+.banner-title { font-size: 14px; font-weight: 600; }
+.banner-sub   { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
 /* ─── Cards ─── */
 .card {
   background: var(--surface);

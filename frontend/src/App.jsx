@@ -5,7 +5,7 @@ import {
   CategoryScale, LinearScale, PointElement,
   LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
-import { Camera, ClipboardList, TrendingUp, User } from 'lucide-react';
+import { Camera, ClipboardList, CloudOff, RotateCw, TrendingUp, User } from 'lucide-react';
 import { primeAudio, say } from './lib/beep';
 import { isAdvancable } from './lib/advancable';
 import { clearSession, loadSession, resumablePlan, saveSession } from './lib/workoutSession';
@@ -72,9 +72,15 @@ function App() {
   // setState inside an effect is what this eslint config rejects.
   const [snapshotUserId, setSnapshotUserId] = useState(undefined);
   const [snapshot, setSnapshot] = useState(null);
+  // Set when a load fails, so an unreachable backend reads as a problem
+  // rather than as "you have no data". Only ever set true by the loaders;
+  // clearing it belongs to retryLoad, so two concurrent loads cannot have
+  // one clear what the other just reported.
+  const [loadFailed, setLoadFailed] = useState(false);
   if (userId !== snapshotUserId) {
     setSnapshotUserId(userId);
     setSnapshot(loadSession(userId));
+    setLoadFailed(false);
   }
 
   // Derived above their first use (this eslint config errors on
@@ -101,14 +107,23 @@ function App() {
   const [plannedDays, setPlannedDays] = useState([]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!userId) return;
-    loadPlans();
-    loadHistory();
+  const loadPlannedDays = () => {
     fitnessApi.getPlannedDays()
       .then(res => setPlannedDays((res.data?.data || []).map(d => d.day)))
-      .catch(err => console.error('loadPlannedDays:', err));
-  }, [userId]);
+      .catch(err => {
+        console.error('loadPlannedDays:', err);
+        setLoadFailed(true);
+      });
+  };
+
+  // Retry runs exactly what mount runs, so there is no second code path to
+  // drift out of step with the first.
+  const retryLoad = () => {
+    setLoadFailed(false);
+    loadPlans();
+    loadHistory();
+    loadPlannedDays();
+  };
 
   const loadPlans = async () => {
     try {
@@ -150,6 +165,7 @@ function App() {
       setPlans(grouped);
     } catch (err) {
       console.error('loadPlans:', err);
+      setLoadFailed(true);
     }
   };
 
@@ -197,8 +213,18 @@ function App() {
       setWorkoutHistory(all);
     } catch (err) {
       console.error('loadHistory:', err);
+      setLoadFailed(true);
     }
   };
+
+  // Declared after the loaders it calls: this eslint config errors on
+  // use-before-declaration for const arrow functions.
+  useEffect(() => {
+    if (!userId) return;
+    loadPlans();
+    loadHistory();
+    loadPlannedDays();
+  }, [userId]);
 
   // ── Plan Creation ─────────────────────────────────────────────────────────
   const planPayload = () => ({
@@ -628,12 +654,29 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
       {/* ── Content ── */}
       <main className="app-content">
 
+        {/* Above every tab, because a failed load empties all of them at
+            once and the cause is the same in each. */}
+        {loadFailed && (
+          <div className="banner-error" role="alert">
+            <CloudOff size={18} strokeWidth={1.5} />
+            <div>
+              <div className="banner-title">Couldn&rsquo;t reach the server</div>
+              <div className="banner-sub">Your data is safe. Check the connection and try again.</div>
+            </div>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={retryLoad}>
+              <RotateCw size={15} strokeWidth={1.5} />
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Kept mounted (merely hidden) while a session is active: unmounting
             would tear down the camera and reset the rep counter mid-set. */}
         {(activeTab === 'counter' || sessionLive) && (
           <div hidden={activeTab !== 'counter'}>
           <WorkoutTab
             plans={plans}
+            loadFailed={loadFailed}
             resumePlan={resumePlan}
             resumeSnapshot={snapshot}
             onResumeWorkout={resumeWorkout}
@@ -689,6 +732,7 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
 
         {activeTab === 'progress' && (
           <ProgressTab
+            loadFailed={loadFailed}
             plannedDays={plannedDays}
             onTogglePlannedDay={togglePlannedDay}
             workoutHistory={workoutHistory}

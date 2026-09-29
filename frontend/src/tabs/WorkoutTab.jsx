@@ -28,7 +28,7 @@ function WorkoutTab({
   completedByExercise, liveReps, setLiveReps, cameraResetKey, autoCamera, results,
   advancing, saving, startSession, doneSet, finishWorkout, retryFailedLogs, confirmProgression,
   skipProgression, cancelSession, restRemaining, getReadyRemaining, beginGetReady, addRestTime,
-  resumePlan, resumeSnapshot, onResumeWorkout, onDiscardResume,
+  resumePlan, resumeSnapshot, onResumeWorkout, onDiscardResume, loadFailed,
 }) {
   const [cameraControls, setCameraControls] = useState(NO_CAMERA_CONTROLS);
 
@@ -128,7 +128,12 @@ function WorkoutTab({
           {plans.length === 0 ? (
             <div className="empty">
               <ClipboardList size={32} strokeWidth={1.5} />
-              <p>No plans yet. Go to the Plan tab to create one.</p>
+              {/* An empty list means nothing while the load failed -- saying
+                  "create one" would send you off to make a plan you already
+                  have. The banner above carries the real explanation. */}
+              <p>{loadFailed
+                ? 'Your plans could not be loaded.'
+                : 'No plans yet. Go to the Plan tab to create one.'}</p>
             </div>
           ) : (
             <>
