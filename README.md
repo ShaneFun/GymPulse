@@ -1,103 +1,101 @@
 <div align="center">
-  <h1>💪 GymPulse (AI Fitness Analyzer)</h1>
-  <p><strong>AI-powered fitness tracking using real-time computer vision.</strong></p>
+  <h1>💪 GymPulse</h1>
+  <p><strong>An AI fitness tracker that counts your reps through your webcam, in real time, without your video ever leaving your device.</strong></p>
 
-  <!-- Badges -->
   <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/Frontend-React-blue?style=flat-square&logo=react" alt="React" /></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
   <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
-  <a href="https://google.github.io/mediapipe/"><img src="https://img.shields.io/badge/AI-MediaPipe-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"><img src="https://img.shields.io/badge/AI-MediaPipe_Pose-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
 
   <br /><br />
-  <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps" width="300" />
+  <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps, then starting the rest timer" width="300" />
   <p><em>Real-time pose tracking counting bicep curl reps, then starting the rest timer.</em></p>
 </div>
 
-<br />
+## Highlights
 
-GymPulse is an intelligent web application designed to automatically track, count, and analyze your workout sessions. By leveraging **client-side machine learning**, the app evaluates your form and rep counts in real time, all without compromising your privacy.
+| | |
+|---|---|
+| **8 exercises** | squats, bicep curls, push-ups and more, counted automatically |
+| **33 body keypoints** | tracked in 3D by Google MediaPipe Pose at **30+ FPS** |
+| **100% in-browser AI** | the model runs in your browser (WebAssembly/WebGL): **no video is sent to any server** |
+| **Progressive overload** | each workout is checked against its target and gets a PASS/FAIL and a next-step recommendation |
 
-## 📋 Table of Contents
-- [✨ Key Features](#-key-features)
-- [🏗 Architecture & Tech Stack](#-architecture--tech-stack)
-- [🚀 Getting Started](#-getting-started)
-- [🧠 How the AI Works](#-how-the-ai-works)
+## What it does
 
----
+- **Counts reps from your camera:** pick an exercise, start moving, and a skeleton overlay tracks your joints while reps are counted, with a rest timer between sets.
+- **Plans your training:** create programs and weekly schedules with target weight, sets and reps.
+- **Judges each session:** logged workouts are compared with their targets: *PASS → move to next week*, *FAIL → repeat the week*.
+- **Shows progress:** charts of strength progression and completion rates over time.
 
-## ✨ Key Features
+## How the AI works
 
-- **📸 Computer Vision Rep Counting**
-  Tracks 8 different exercises (Squats, Bicep Curls, Push-ups, etc.) by mapping 33 3D anatomical body keypoints using the device camera.
-- **📊 Automated Analytics & Progression**
-  Logs your performance and compares it against your customized target schedules. Automatically assigns PASS/FAIL scores and generates progressive overload recommendations.
-- **📈 Visual Progress Dashboard**
-  Interactive charts tracking your strength progression and completion rates over time.
-
----
-
-## 🏗 Architecture & Tech Stack
-
-### Frontend
-- **React.js & Vite**: Fast, modern UI development.
-- **HTML5 Canvas**: For drawing live skeletal overlay networks on top of the webcam feed.
-- **Chart.js**: For interactive data visualization.
-
-### Backend
-- **FastAPI (Python)**: High-performance async API for schedule management and workout evaluation logic.
-- **Supabase**: PostgreSQL database for persistent logging and user tracking.
-
----
-
-## 🚀 Getting Started
-
-Follow these instructions to run the project locally.
-
-### 1. Backend Setup
-
-```bash
-# Navigate to project root and create a virtual environment
-python -m venv venv
-
-# Activate the virtual environment
-source venv/Scripts/activate  # (On Windows)
-# source venv/bin/activate    # (On Mac/Linux)
-
-# Install dependencies
-pip install -r requirements.txt
+```mermaid
+flowchart LR
+    C["Webcam frame"] --> P["MediaPipe Pose<br/>(in the browser)"]
+    P -->|"33 keypoints"| A["Joint angles<br/>vector trigonometry"]
+    A --> F["5-frame<br/>smoothing filter"]
+    F --> S["State machine<br/>down → up = 1 rep"]
+    S --> L["Workout log<br/>FastAPI + Supabase"]
 ```
 
-Create a `.env` file in the root directory with your Supabase credentials:
+1. **Pose estimation, privately:** the MediaPipe Pose neural network runs entirely in the browser, so video never leaves the device.
+2. **Kinematic math:** the app takes the joints that matter for each exercise (e.g. hip, knee and ankle for squats) and computes the angle between them with vector trigonometry.
+3. **Signal processing:** a 5-frame moving average removes jitter, and a state machine (`down` → `up`) counts a rep only on a full movement.
+4. **Progression engine:** the FastAPI backend compares each logged session with its schedule (weight, sets, reps) and recommends the next step.
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| AI / computer vision | Google MediaPipe Pose (WebGL / WebAssembly), HTML5 Canvas |
+| Frontend | React, Vite, Chart.js, Axios |
+| Backend | Python, FastAPI, Pydantic |
+| Database | Supabase (PostgreSQL) |
+| Hosting | Vercel (website), Render (API) |
+
+<details>
+<summary><b>Run it locally</b></summary>
+
+**Backend** (from the project root):
+```bash
+python -m venv venv
+source venv/Scripts/activate      # Windows (Git Bash); macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt
+```
+Create a `.env` file in the project root:
 ```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_anon_key
 ```
-
-Start the FastAPI server:
+Start the API (http://localhost:8000):
 ```bash
 python backend/app/main.py
 ```
-*The API will be available at `http://localhost:8000`*
 
-### 2. Frontend Setup
-
-Open a new terminal window:
+**Frontend** (new terminal):
 ```bash
-# Navigate to the frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start the development server
-npm run dev
+npm run dev                       # http://localhost:5173
 ```
-*The app will be available at `http://localhost:5173`*
 
----
+</details>
 
-## 🧠 How the AI Works
+<details>
+<summary><b>Deploy (free tiers)</b></summary>
 
-1. **Privacy-First Pose Estimation**: The Google MediaPipe Pose neural network runs entirely inside your browser via WebAssembly. **No video data is ever sent to a server.**
-2. **Kinematic Math**: The app extracts the coordinates for specific joints (e.g., Hip, Knee, Ankle for squats) and calculates the internal angles using vector trigonometry. 
-3. **State Machine & Signal Processing**: The raw angle data is passed through a 5-frame moving average filter to eliminate sensor jitter. The smoothed angles trigger state transitions (e.g., `down` -> `up`) to register perfect repetitions.
+1. **API: Render.** Blueprints → New Blueprint Instance → this repo (uses `render.yaml`). Set `SUPABASE_URL`, `SUPABASE_KEY` and `ALLOWED_ORIGINS` (your Vercel URL).
+2. **Website: Vercel.** Import the repo, root directory `frontend` (Vite is detected), and set `VITE_API_URL` to the Render URL.
+
+The camera needs HTTPS, which Vercel provides.
+
+</details>
+
+## Project layout
+
+```
+backend/app/main.py     FastAPI: programs, schedules, workout logs, progression analysis
+frontend/src/           React app: AICameraCounter.jsx (pose tracking + rep counting), dashboard, API client
+render.yaml             Render blueprint for the API
+```
