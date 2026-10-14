@@ -884,6 +884,86 @@ button.row:disabled { opacity: 0.6; cursor: default; transform: none; }
 .card-dark .camera-controls { padding: 10px 12px; }
 .card-dark + .set-chips { margin-top: 10px; }
 
+/* ─── Immersive camera (while a set is actually running) ─── */
+/* The camera fills everything between the top of the content area and the
+   tab bar. The bar stays: you should still be able to leave mid-set.
+   Rest and the Done screen keep the normal layout — those are for reading. */
+.app-content-full {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The heading costs ~60px and says nothing you don't already know while
+   you are mid-set with the camera on you. */
+.app-content-full .screen-heading { display: none; }
+
+/* Height has to be handed down explicitly at every level, or the card has
+   no definite height to fill. */
+.app-content-full .tab-pane,
+.app-content-full .workout-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-content-full .workout-root { position: relative; }
+
+.app-content-full .card-dark {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  border-radius: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-content-full .camera-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+/* contain, not cover: letterboxing wastes a little space but guarantees you
+   are seeing exactly what the pose model sees. Cropping could hide the fact
+   that a limb is out of frame, which reads as "the counter is broken". */
+.app-content-full .camera-frame canvas {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+/* Controls float over the video rather than taking their own strip, with a
+   scrim so the icons stay legible against a bright frame. */
+.app-content-full .card-dark-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 16px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+}
+
+/* Completed sets ride just above the controls instead of below the card,
+   where the filled card would push them off screen. */
+.app-content-full .set-chips {
+  position: absolute;
+  left: 16px;
+  bottom: 84px;
+  margin: 0;
+  z-index: 2;
+}
+
+.app-content-full .set-chip {
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--text-on-dark);
+  padding: 6px 10px;
+  min-width: 44px;
+}
+
+.app-content-full .set-chip-label { color: rgba(255, 255, 255, 0.7); }
+
 /* ─── Rest between sets ─── */
 .rest-panel {
   background: var(--surface-dark);

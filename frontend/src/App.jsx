@@ -95,6 +95,11 @@ function App() {
     || sessionState === 'resting'
     || sessionState === 'getready';
 
+  // A set actually in progress, on the tab that shows it. Rest and the Done
+  // screen are excluded: those are for reading, and need the normal layout.
+  const cameraFull = activeTab === 'counter'
+    && (sessionState === 'active' || sessionState === 'getready');
+
   // Only offer to resume when nothing is running and the snapshot still fits
   // a plan that exists — see resumablePlan for what disqualifies one.
   const resumePlan = sessionLive || sessionState === 'done'
@@ -652,7 +657,7 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
     <div className="app-shell">
 
       {/* ── Content ── */}
-      <main className="app-content">
+      <main className={`app-content${cameraFull ? ' app-content-full' : ''}`}>
 
         {/* Above every tab, because a failed load empties all of them at
             once and the cause is the same in each. */}
@@ -673,7 +678,7 @@ ${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your hist
         {/* Kept mounted (merely hidden) while a session is active: unmounting
             would tear down the camera and reset the rep counter mid-set. */}
         {(activeTab === 'counter' || sessionLive) && (
-          <div hidden={activeTab !== 'counter'}>
+          <div className="tab-pane" hidden={activeTab !== 'counter'}>
           <WorkoutTab
             plans={plans}
             loadFailed={loadFailed}

@@ -92,7 +92,7 @@ function WorkoutTab({
 
 
   return (
-    <div>
+    <div className="workout-root">
       <h1 className="screen-heading">Workout</h1>
 
       {/* IDLE — resume offer, then the plan selector */}
