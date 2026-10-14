@@ -6,6 +6,7 @@
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
   <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
   <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"><img src="https://img.shields.io/badge/AI-MediaPipe_Pose-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
+  <a href="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml"><img src="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 
   <br /><br />
   <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps, then starting the rest timer" width="300" />
@@ -53,6 +54,19 @@ flowchart LR
 | Backend | Python, FastAPI, Pydantic |
 | Database | Supabase (PostgreSQL) |
 | Hosting | Vercel (website), Render (API) |
+| Testing / CI | pytest, GitHub Actions |
+
+## Tests and CI
+
+The progression rule lives in one place, `backend/app/progression.py`, and is covered by unit tests in `tests/`.
+Run them from the project root:
+
+```bash
+pip install -r requirements-dev.txt
+pytest -v
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the backend tests and the frontend build on every push to `main` and every pull request.
 
 <details>
 <summary><b>Run it locally</b></summary>
@@ -95,7 +109,10 @@ The camera needs HTTPS, which Vercel provides.
 ## Project layout
 
 ```
-backend/app/main.py     FastAPI: programs, schedules, workout logs, progression analysis
-frontend/src/           React app: AICameraCounter.jsx (pose tracking + rep counting), dashboard, API client
-render.yaml             Render blueprint for the API
+backend/app/main.py         FastAPI: programs, schedules, workout logs, progression analysis
+backend/app/progression.py  PASS/FAIL progression rule (pure function, unit-tested)
+tests/                      pytest unit tests
+frontend/src/               React app: AICameraCounter.jsx (pose tracking + rep counting), dashboard, API client
+.github/workflows/ci.yml    CI: backend tests + frontend build
+render.yaml                 Render blueprint for the API
 ```
