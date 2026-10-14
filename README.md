@@ -1,5 +1,7 @@
 # GymPulse
 
+[![CI](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg)](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml)
+
 A workout tracker that counts your reps through your phone's camera.
 
 Set a plan — *3 sets of 10 bicep curls at 20 kg* — and GymPulse uses pose estimation to count each rep, calls the numbers out loud, times your rest, then grades the session against the target and offers to raise the weight next week if you passed.
@@ -88,13 +90,30 @@ tailscale serve --bg 5173
 
 That publishes the dev server over HTTPS on your tailnet only.
 
+## Run it with Docker
+
+With `SUPABASE_URL` and `SUPABASE_KEY` (publishable key) in `.env` at the project root:
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:8080. nginx serves the built app and forwards `/api` to
+the API container, the same way the Vite dev proxy does, so there is no CORS
+setup. Port 8080 busy? Add `WEB_PORT=3080` (any free port) to `.env`.
+
 ## Tests
 
 ```bash
-pytest backend/tests -q      # 61 tests, no database required
+pytest -q                    # backend tests, no database required
 cd frontend && npm run lint
 cd frontend && npm run build
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to
+`main` and every pull request, and also builds and smoke-tests the Docker images.
+The progression rule (PASS/FAIL against the plan's targets) lives in one place,
+`backend/app/progression.py`, with its own unit tests.
 
 Backend tests run against an in-memory fake of the Supabase client, so the
 suite is fast and offline. The trade-off is that the fake has no schema and

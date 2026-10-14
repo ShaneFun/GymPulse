@@ -1,0 +1,79 @@
+# Continuous integration: runs on every push to main and every pull request.
+# A red X on a commit means a test, lint, build or Docker check failed.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-tests:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        # runs against an in-memory fake of Supabase: no database or secrets needed
+        run: pytest -v
+
+  frontend:
+    name: Frontend lint + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker images (build + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t gympulse-api .
+      - name: Build web image
+        run: |
+          docker build -t gympulse-web \
+            --build-arg VITE_SUPABASE_URL=https://example.supabase.co \
+            --build-arg VITE_SUPABASE_ANON_KEY=dummy-publishable-key \
+            ./frontend
+      - name: Smoke test API container
+        run: |
+          # dummy credentials: the "/" health route doesn't touch the database
+          docker run -d --name api -p 8000:8000 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_KEY=dummy-publishable-key \
+            gympulse-api
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/ | grep -q "Running"; then echo "API is up"; exit 0; fi
+            sleep 1
+          done
+          docker logs api; exit 1
+      - name: Smoke test web container (serves app, proxies /api)
+        run: |
+          docker network create gp
+          docker network connect --alias api gp api
+          docker run -d --name web --network gp -p 8080:80 gympulse-web
+          sleep 2
+          curl -fs http://localhost:8080/ | grep -qi '<div id="root"' && echo "Web is up"
+          curl -fs http://localhost:8080/progress | grep -qi '<div id="root"' && echo "SPA fallback works"
+          curl -fs http://localhost:8080/api/ | grep -q "Running" && echo "/api proxy reaches the API"
