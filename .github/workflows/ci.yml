@@ -39,3 +39,32 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+
+  docker:
+    name: Docker images (build + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t gympulse-api .
+      - name: Build web image
+        run: docker build -t gympulse-web --build-arg VITE_API_URL=http://localhost:8000 ./frontend
+      - name: Smoke test API container
+        run: |
+          # dummy credentials: the "/" health route doesn't touch the database
+          docker run -d --name api -p 8000:8000 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_KEY=eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnbmF0dXJl \
+            gympulse-api
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/ | grep -q "Running"; then echo "API is up"; exit 0; fi
+            sleep 1
+          done
+          docker logs api; exit 1
+      - name: Smoke test web container
+        run: |
+          docker run -d --name web -p 8080:80 gympulse-web
+          sleep 2
+          curl -fs http://localhost:8080/ | grep -qi "<div id=\"root\"" && echo "Web is up"
+          # SPA fallback: an unknown path must still serve the app
+          curl -fs http://localhost:8080/progress | grep -qi "<div id=\"root\"" && echo "SPA fallback works"
