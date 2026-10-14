@@ -5,6 +5,13 @@ from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
+
+# Works both on Render (uvicorn backend.app.main:app) and locally (python backend/app/main.py)
+try:
+    from backend.app.progression import evaluate_session, recommendation
+except ModuleNotFoundError:
+    from progression import evaluate_session, recommendation
+
 load_dotenv()
 
 # Websites allowed to call this API (comma-separated). Set ALLOWED_ORIGINS when deploying.
@@ -106,14 +113,8 @@ def create_workout_log(log: WorkoutLogCreate):
         target_sets = target["target_sets"]
         target_reps = target["target_reps"]
 
-        if (
-            log.actual_weight >= target_weight
-            and len(log.actual_reps) >= target_sets
-            and all(rep >= target_reps for rep in log.actual_reps)
-        ):
-            status = "PASS"
-        else:
-            status = "FAIL"
+        status = evaluate_session(target_weight, target_sets, target_reps,
+                                  log.actual_weight, log.actual_reps)
 
         # Do not insert status and recommendation into Supabase because they are not in the schema.
         # They will be computed dynamically in the /analysis endpoint.
@@ -190,17 +191,9 @@ def get_workout_analysis(schedule_id: str):
             a_weight = log.get("actual_weight", 0)
             a_reps = log.get("actual_reps", [])
             
-            if (
-                a_weight >= t_weight
-                and len(a_reps) >= t_sets
-                and all(rep >= t_reps for rep in a_reps)
-            ):
-                status = "PASS"
-                rec = "Move to next week's workout."
-            else:
-                status = "FAIL"
-                rec = "Repeat the current week."
-                
+            status = evaluate_session(t_weight, t_sets, t_reps, a_weight, a_reps)
+            rec = recommendation(status)
+
             history.append({
                 "id": log["id"],
                 "log_name": log.get("log_name"),
