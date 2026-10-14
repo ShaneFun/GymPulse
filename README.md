@@ -112,8 +112,6 @@ cd frontend && npm run build
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to
 `main` and every pull request, and also builds and smoke-tests the Docker images.
-The progression rule (PASS/FAIL against the plan's targets) lives in one place,
-`backend/app/progression.py`, with its own unit tests.
 
 Backend tests run against an in-memory fake of the Supabase client, so the
 suite is fast and offline. The trade-off is that the fake has no schema and
