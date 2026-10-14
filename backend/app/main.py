@@ -10,9 +10,6 @@ from supabase import create_client, Client, ClientOptions
 from postgrest.exceptions import APIError
 from fastapi.middleware.cors import CORSMiddleware
 
-# main.py runs as a standalone module (tests and uvicorn put backend/app on the path)
-from progression import evaluate_session, recommendation
-
 app= FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -578,8 +575,14 @@ def create_workout_log(log: WorkoutLogCreate, db: Client = Depends(get_supabase)
         target_sets = target["target_sets"]
         target_reps = target["target_reps"]
 
-        status = evaluate_session(target_weight, target_sets, target_reps,
-                                  log.actual_weight, log.actual_reps)
+        if (
+            log.actual_weight >= target_weight
+            and len(log.actual_reps) >= target_sets
+            and all(rep >= target_reps for rep in log.actual_reps)
+        ):
+            status = "PASS"
+        else:
+            status = "FAIL"
 
         # Do not insert status and recommendation into Supabase because they are not in the schema.
         # They will be computed dynamically in the /analysis endpoint.
@@ -663,8 +666,16 @@ def get_workout_analysis(schedule_id: str, db: Client = Depends(get_supabase)):
             g_sets = t_sets if l_s is None else l_s
             g_reps = t_reps if l_r is None else l_r
 
-            status = evaluate_session(g_weight, g_sets, g_reps, a_weight, a_reps)
-            rec = recommendation(status)
+            if (
+                a_weight >= g_weight
+                and len(a_reps) >= g_sets
+                and all(rep >= g_reps for rep in a_reps)
+            ):
+                status = "PASS"
+                rec = "Move to next week's workout."
+            else:
+                status = "FAIL"
+                rec = "Repeat the current week."
                 
             history.append({
                 "id": log["id"],
