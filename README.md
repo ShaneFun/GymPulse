@@ -106,6 +106,8 @@ docker compose up --build
 - Web app: http://localhost:8080
 - API: http://localhost:8000
 
+If port 8080 is already in use, add `WEB_PORT=3080` (or any free port) to `.env` and open that port instead.
+
 The API image (`Dockerfile`) runs FastAPI with uvicorn as a non-root user. The web image (`frontend/Dockerfile`) builds the React app with Node, then serves the static files with nginx. CI builds and smoke-tests both images on every push.
 
 </details>
