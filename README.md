@@ -83,6 +83,20 @@ npm run dev                       # http://localhost:5173
 </details>
 
 <details>
+<summary><b>Run it with Docker</b></summary>
+
+With the same `.env` file in the project root (`SUPABASE_URL`, `SUPABASE_KEY`):
+```bash
+docker compose up --build
+```
+- Web app: http://localhost:8080
+- API: http://localhost:8000
+
+The API image (`Dockerfile`) runs FastAPI with uvicorn as a non-root user. The web image (`frontend/Dockerfile`) builds the React app with Node, then serves the static files with nginx. CI builds and smoke-tests both images on every push.
+
+</details>
+
+<details>
 <summary><b>Deploy (free tiers)</b></summary>
 
 1. **API: Render.** Blueprints → New Blueprint Instance → this repo (uses `render.yaml`). Set `SUPABASE_URL`, `SUPABASE_KEY` and `ALLOWED_ORIGINS` (your Vercel URL).

@@ -1,0 +1,13 @@
+# Keep the API image small and free of secrets
+.git
+.github
+.env
+.env.*
+venv/
+**/__pycache__/
+*.pyc
+frontend/
+docs/
+tests/
+.idea/
+.vscode/

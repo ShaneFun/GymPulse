@@ -1,0 +1,24 @@
+# Run the whole app locally with one command:
+#   docker compose up --build
+# Web app: http://localhost:8080   API: http://localhost:8000
+# Needs a .env file in the project root with SUPABASE_URL and SUPABASE_KEY.
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # the browser loads the web app from :8080, so allow that origin
+      ALLOWED_ORIGINS: http://localhost:8080
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # the browser runs on your machine, so it reaches the API on localhost
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
