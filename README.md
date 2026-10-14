@@ -1,134 +1,160 @@
-<div align="center">
-  <h1>💪 GymPulse</h1>
-  <p><strong>An AI fitness tracker that counts your reps through your webcam, in real time, without your video ever leaving your device.</strong></p>
+# GymPulse
 
-  <a href="https://reactjs.org/"><img src="https://img.shields.io/badge/Frontend-React-blue?style=flat-square&logo=react" alt="React" /></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
-  <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
-  <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"><img src="https://img.shields.io/badge/AI-MediaPipe_Pose-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
-  <a href="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml"><img src="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+[![CI](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg)](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml)
 
-  <br /><br />
-  <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps, then starting the rest timer" width="300" />
-  <p><em>Real-time pose tracking counting bicep curl reps, then starting the rest timer.</em></p>
-</div>
+A workout tracker that counts your reps through your phone's camera.
 
-## Highlights
+Set a plan — *3 sets of 10 bicep curls at 20 kg* — and GymPulse uses pose estimation to count each rep, calls the numbers out loud, times your rest, then grades the session against the target and offers to raise the weight next week if you passed.
 
-| | |
-|---|---|
-| **8 exercises** | squats, bicep curls, push-ups and more, counted automatically |
-| **33 body keypoints** | tracked in 3D by Google MediaPipe Pose at **30+ FPS** |
-| **100% in-browser AI** | the model runs in your browser (WebAssembly/WebGL): **no video is sent to any server** |
-| **Progressive overload** | each workout is checked against its target and gets a PASS/FAIL and a next-step recommendation |
+Pose estimation runs entirely in the browser. **No video ever leaves the device.**
 
-## What it does
+## Features
 
-- **Counts reps from your camera:** pick an exercise, start moving, and a skeleton overlay tracks your joints while reps are counted, with a rest timer between sets.
-- **Plans your training:** create programs and weekly schedules with target weight, sets and reps.
-- **Judges each session:** logged workouts are compared with their targets: *PASS → move to next week*, *FAIL → repeat the week*.
-- **Shows progress:** charts of strength progression and completion rates over time.
+- **Camera rep counting** for eight exercises, using MediaPipe Pose and joint-angle geometry
+- **Spoken cues** — every rep called out, a "last three" warning, and a tone on the target
+- **Multi-exercise plans** with per-exercise targets, rest timers, and a longer break between exercises
+- **Automatic progression** — pass a session and GymPulse offers next week's plan with your chosen weight and rep increments applied
+- **Calendar view** of your history, colour-coded by personal best, pass, mixed or missed
+- **Resumable sessions** — an interrupted workout survives a reload and offers to continue
+- **Private by default** — row-level security scopes every row to its owner
 
-## How the AI works
+## Stack
 
-```mermaid
-flowchart LR
-    C["Webcam frame"] --> P["MediaPipe Pose<br/>(in the browser)"]
-    P -->|"33 keypoints"| A["Joint angles<br/>vector trigonometry"]
-    A --> F["5-frame<br/>smoothing filter"]
-    F --> S["State machine<br/>down → up = 1 rep"]
-    S --> L["Workout log<br/>FastAPI + Supabase"]
-```
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, Chart.js |
+| Pose estimation | MediaPipe Pose (in-browser, WebAssembly) |
+| Backend | FastAPI (Python 3.11) |
+| Database & auth | Supabase — PostgreSQL, PostgREST, GoTrue, Storage |
 
-1. **Pose estimation, privately:** the MediaPipe Pose neural network runs entirely in the browser, so video never leaves the device.
-2. **Kinematic math:** the app takes the joints that matter for each exercise (e.g. hip, knee and ankle for squats) and computes the angle between them with vector trigonometry.
-3. **Signal processing:** a 5-frame moving average removes jitter, and a state machine (`down` → `up`) counts a rep only on a full movement.
-4. **Progression engine:** the FastAPI backend compares each logged session with its schedule (weight, sets, reps) and recommends the next step.
+## Getting started
 
-## Tech stack
+### Prerequisites
 
-| Layer | Tools |
-|---|---|
-| AI / computer vision | Google MediaPipe Pose (WebGL / WebAssembly), HTML5 Canvas |
-| Frontend | React, Vite, Chart.js, Axios |
-| Backend | Python, FastAPI, Pydantic |
-| Database | Supabase (PostgreSQL) |
-| Hosting | Vercel (website), Render (API) |
-| Testing / CI | pytest, GitHub Actions |
+- Python 3.11+
+- Node.js 18+
+- A Supabase project
 
-## Tests and CI
-
-The progression rule lives in one place, `backend/app/progression.py`, and is covered by unit tests in `tests/`.
-Run them from the project root:
+### 1. Configure
 
 ```bash
-pip install -r requirements-dev.txt
-pytest -v
+cp .env.example .env
+cp frontend/.env.example frontend/.env
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the backend tests and the frontend build on every push to `main` and every pull request.
+Fill both with your Supabase project URL and **publishable** (anon) key, from
+Dashboard → Settings → API. The backend reads `SUPABASE_URL` / `SUPABASE_KEY`;
+the frontend reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
 
-<details>
-<summary><b>Run it locally</b></summary>
+> Use the publishable key, never the service role key — the latter bypasses
+> row-level security and would expose every user's data.
 
-**Backend** (from the project root):
+### 2. Run the backend
+
 ```bash
 python -m venv venv
-source venv/Scripts/activate      # Windows (Git Bash); macOS/Linux: source venv/bin/activate
+source venv/Scripts/activate      # Windows
+# source venv/bin/activate        # macOS / Linux
+
 pip install -r requirements.txt
-```
-Create a `.env` file in the project root:
-```env
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_anon_key
-```
-Start the API (http://localhost:8000):
-```bash
 python backend/app/main.py
 ```
 
-**Frontend** (new terminal):
+Serves on `http://127.0.0.1:8000`. There is no auto-reload — restart after
+changing `main.py`.
+
+### 3. Run the frontend
+
 ```bash
 cd frontend
 npm install
-npm run dev                       # http://localhost:5173
+npm run dev
 ```
 
-</details>
+Serves on `http://localhost:5173` and proxies `/api` to the backend, so the
+app works unchanged from another device on the network.
 
-<details>
-<summary><b>Run it with Docker</b></summary>
+### 4. Create an account
 
-With the same `.env` file in the project root (`SUPABASE_URL`, `SUPABASE_KEY`):
+Sign up on the login screen, or add a user from Dashboard → Authentication →
+Users. Email confirmation is required by default.
+
+## Using it from a phone
+
+The camera needs a secure context, so plain HTTP over a local IP will not
+work. [Tailscale](https://tailscale.com) is the simplest route:
+
+```bash
+tailscale serve --bg 5173
+```
+
+That publishes the dev server over HTTPS on your tailnet only.
+
+## Run it with Docker
+
+With `SUPABASE_URL` and `SUPABASE_KEY` (publishable key) in `.env` at the project root:
+
 ```bash
 docker compose up --build
 ```
-- Web app: http://localhost:8080
-- API: http://localhost:8000
 
-If port 8080 is already in use, add `WEB_PORT=3080` (or any free port) to `.env` and open that port instead.
+Open http://localhost:8080. nginx serves the built app and forwards `/api` to
+the API container, the same way the Vite dev proxy does, so there is no CORS
+setup. Port 8080 busy? Add `WEB_PORT=3080` (any free port) to `.env`.
 
-The API image (`Dockerfile`) runs FastAPI with uvicorn as a non-root user. The web image (`frontend/Dockerfile`) builds the React app with Node, then serves the static files with nginx. CI builds and smoke-tests both images on every push.
+## Tests
 
-</details>
+```bash
+pytest -q                    # backend tests, no database required
+cd frontend && npm run lint
+cd frontend && npm run build
+```
 
-<details>
-<summary><b>Deploy (free tiers)</b></summary>
+GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to
+`main` and every pull request, and also builds and smoke-tests the Docker images.
+The progression rule (PASS/FAIL against the plan's targets) lives in one place,
+`backend/app/progression.py`, with its own unit tests.
 
-1. **API: Render.** Blueprints → New Blueprint Instance → this repo (uses `render.yaml`). Set `SUPABASE_URL`, `SUPABASE_KEY` and `ALLOWED_ORIGINS` (your Vercel URL).
-2. **Website: Vercel.** Import the repo, root directory `frontend` (Vite is detected), and set `VITE_API_URL` to the Render URL.
+Backend tests run against an in-memory fake of the Supabase client, so the
+suite is fast and offline. The trade-off is that the fake has no schema and
+cannot catch a mismatch with the real database.
 
-The camera needs HTTPS, which Vercel provides.
+## How rep counting works
 
-</details>
+1. MediaPipe returns 33 body landmarks per frame.
+2. Three of them form the joint being measured — for a curl, shoulder, elbow and wrist. Two `atan2` calls give the angle between the limbs.
+3. A five-frame rolling average removes the jitter inherent in pose estimation.
+4. Two thresholds, not one, decide a rep: the angle must pass above the upper bound to arm and below the lower to fire. That gap is what stops a paused arm from counting repeatedly.
 
-## Project layout
+Each exercise is five numbers — three landmark indices and two angles — so
+adding one means adding a config entry, not writing code.
+
+## Project structure
 
 ```
-backend/app/main.py         FastAPI: programs, schedules, workout logs, progression analysis
-backend/app/progression.py  PASS/FAIL progression rule (pure function, unit-tested)
-tests/                      pytest unit tests
-frontend/src/               React app: AICameraCounter.jsx (pose tracking + rep counting), dashboard, API client
-.github/workflows/ci.yml    CI: backend tests + frontend build
-render.yaml                 Render blueprint for the API
+backend/
+  app/main.py          API — 11 endpoints
+  tests/               pytest suite and the Supabase fake
+frontend/src/
+  App.jsx              application state and the session machine
+  AICameraCounter.jsx  pose estimation and rep counting
+  api/client.js        HTTP client and auth token injection
+  auth/                sign in, sign up, password reset
+  tabs/                Workout, Plan, Progress, Me
+  lib/                 pure helpers — validation, calendar, audio
+```
+
+## Security
+
+Every table has row-level security enabled, with policies scoping rows to
+`auth.uid()`. The API carries the caller's JWT through to PostgREST, so the
+database — not application code — is the thing enforcing access.
+
+Policies do nothing while RLS is disabled on a table, and the two are set
+separately. After any schema change, verify the switch itself:
+
+```sql
+select relname, relrowsecurity
+from pg_class
+where relname in ('programs','schedules','workout_logs','profiles','planned_days');
 ```

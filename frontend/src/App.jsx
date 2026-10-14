@@ -1,68 +1,190 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { fitnessApi } from './api/client';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement,
-  LineElement, BarElement, Title, Tooltip, Legend,
+  LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import AICameraCounter, { EXERCISE_CONFIGS } from './AICameraCounter';
+import { Camera, ClipboardList, CloudOff, RotateCw, TrendingUp, User } from 'lucide-react';
+import { primeAudio, say } from './lib/beep';
+import { isAdvancable } from './lib/advancable';
+import { clearSession, loadSession, resumablePlan, saveSession } from './lib/workoutSession';
+import WorkoutTab from './tabs/WorkoutTab';
+import PlanTab from './tabs/PlanTab';
+import ProgressTab from './tabs/ProgressTab';
+import MeTab from './tabs/MeTab';
+import { useAuth } from './auth/AuthProvider';
+import LoginScreen from './auth/LoginScreen';
+import ResetPasswordScreen from './auth/ResetPasswordScreen';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const EXERCISE_OPTIONS = Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => ({
-  key,
-  label: cfg.label,
-}));
+const TABS = [
+  { key: 'counter',  label: 'Workout',  Icon: Camera },
+  { key: 'plan',     label: 'Plan',     Icon: ClipboardList },
+  { key: 'progress', label: 'Progress', Icon: TrendingUp },
+  { key: 'me',       label: 'Me',       Icon: User },
+];
 
 // ── App ──────────────────────────────────────────────────────────────────────
 function App() {
+  const { session, loading, recovery } = useAuth();
+  const userId = session?.user?.id ?? null;
+
   // Navigation
-  const [activeTab, setActiveTab] = useState('counter'); // 'counter' | 'plan' | 'progress'
+  const [activeTab, setActiveTab] = useState('counter'); // 'counter' | 'plan' | 'progress' | 'me'
 
   // ── Plan Tab ──
   const [plans, setPlans] = useState([]); // list of {id, program_id, exercise_name, target_sets, target_reps, target_weight, week}
   const [planName, setPlanName] = useState('');
-  const [planExercise, setPlanExercise] = useState('bicep_curl');
-  const [planSets, setPlanSets] = useState('');
-  const [planReps, setPlanReps] = useState('');
-  const [planWeight, setPlanWeight] = useState('0');
+  const [planExerciseRest, setPlanExerciseRest] = useState('180');
+  // Each entry is one exercise in the plan being built.
+  const [planExercises, setPlanExercises] = useState([]);
+  // Non-null while editing an existing plan; the form is otherwise creating.
+  const [editingProgramId, setEditingProgramId] = useState(null);
+  const [creatingPlan, setCreatingPlan] = useState(false); // in-flight guard for Create Plan
 
   // ── Counter Tab ──
   const [selectedPlan, setSelectedPlan] = useState(null); // full plan object
   // sessionState: 'idle' | 'active' | 'done'
   const [sessionState, setSessionState] = useState('idle');
   const [currentSet, setCurrentSet] = useState(1);
-  const [completedSets, setCompletedSets] = useState([]); // array of rep counts
+  const [exerciseIndex, setExerciseIndex] = useState(0);
+  // One array of rep counts per exercise, parallel to selectedPlan.exercises.
+  const [completedByExercise, setCompletedByExercise] = useState([]);
   const [liveReps, setLiveReps] = useState(0);
+  // Between sets: 'resting' counts the rest down then waits for a tap;
+  // 'getready' is the short lead-in after that tap, during which the camera
+  // warms up but any reps it sees are discarded.
+  const [restRemaining, setRestRemaining] = useState(0);
+  const [getReadyRemaining, setGetReadyRemaining] = useState(0);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [autoCamera, setAutoCamera] = useState(true); // user toggle: auto vs manual
+  // Per-exercise outcomes from finishWorkout: [{ exercise, reps, passed, logged }]
+  const [results, setResults] = useState([]);
+  const [advancing, setAdvancing] = useState(false); // in-flight guard for the Confirm button
+  const [saving, setSaving] = useState(false); // in-flight guard for Save & retry-failed-logs
+
+  // A workout left unfinished when the page went away, read back from
+  // localStorage. Adjusted during render rather than in an effect: reading
+  // it at mount would miss the user signing in a moment later, and a
+  // setState inside an effect is what this eslint config rejects.
+  const [snapshotUserId, setSnapshotUserId] = useState(undefined);
+  const [snapshot, setSnapshot] = useState(null);
+  // Set when a load fails, so an unreachable backend reads as a problem
+  // rather than as "you have no data". Only ever set true by the loaders;
+  // clearing it belongs to retryLoad, so two concurrent loads cannot have
+  // one clear what the other just reported.
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (userId !== snapshotUserId) {
+    setSnapshotUserId(userId);
+    setSnapshot(loadSession(userId));
+    setLoadFailed(false);
+  }
+
+  // Derived above their first use (this eslint config errors on
+  // use-before-declaration for const arrow functions that reference them).
+  const currentExercise = selectedPlan?.exercises?.[exerciseIndex] ?? null;
+  // The flat list becomes the current exercise's list, derived rather than
+  // kept as a second piece of state, so the two can never disagree.
+  const completedSets = completedByExercise[exerciseIndex] ?? [];
+
+  // A session is live whenever the machine is anywhere other than idle/done.
+  const sessionLive = sessionState === 'active'
+    || sessionState === 'resting'
+    || sessionState === 'getready';
+
+  // A set actually in progress, on the tab that shows it. Rest and the Done
+  // screen are excluded: those are for reading, and need the normal layout.
+  const cameraFull = activeTab === 'counter'
+    && (sessionState === 'active' || sessionState === 'getready');
+
+  // Only offer to resume when nothing is running and the snapshot still fits
+  // a plan that exists — see resumablePlan for what disqualifies one.
+  const resumePlan = sessionLive || sessionState === 'done'
+    ? null
+    : resumablePlan(snapshot, plans);
 
   // ── Progress Tab ──
   const [workoutHistory, setWorkoutHistory] = useState([]); // all logs across all plans
+  // Days the user intends to train, as 'YYYY-MM-DD' strings.
+  const [plannedDays, setPlannedDays] = useState([]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
+  const loadPlannedDays = () => {
+    fitnessApi.getPlannedDays()
+      .then(res => setPlannedDays((res.data?.data || []).map(d => d.day)))
+      .catch(err => {
+        console.error('loadPlannedDays:', err);
+        setLoadFailed(true);
+      });
+  };
+
+  // Retry runs exactly what mount runs, so there is no second code path to
+  // drift out of step with the first.
+  const retryLoad = () => {
+    setLoadFailed(false);
     loadPlans();
     loadHistory();
-  }, []);
+    loadPlannedDays();
+  };
 
   const loadPlans = async () => {
     try {
       const res = await fitnessApi.getPrograms();
       const programs = res.data.data || [];
-      // For each program, fetch its schedules — each schedule IS a plan
-      const allSchedules = await Promise.all(
+
+      const perProgram = await Promise.all(
         programs.map(p =>
-          fitnessApi.getSchedules(p.id).then(r =>
-            (r.data.data || []).map(s => ({ ...s, programName: p.name }))
-          )
+          fitnessApi.getSchedules(p.id).then(r => ({ program: p, schedules: r.data.data || [] }))
         )
       );
-      setPlans(allSchedules.flat());
+
+      // A plan is every exercise a program holds in one week, so
+      // (programId, week) is its identity — not a schedule id.
+      const grouped = [];
+      for (const { program, schedules } of perProgram) {
+        const byWeek = new Map();
+        for (const s of schedules) {
+          if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+          byWeek.get(s.week).push(s);
+        }
+        for (const [week, exercises] of byWeek) {
+          grouped.push({
+            id: `${program.id}-${week}`,
+            programId: program.id,
+            programName: program.name,
+            week,
+            exerciseRestSeconds: program.exercise_rest_seconds ?? 180,
+            exercises: exercises.slice().sort(
+              (a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))
+            ),
+          });
+        }
+      }
+
+      grouped.sort(
+        (a, b) => (a.programName || '').localeCompare(b.programName || '') || a.week - b.week
+      );
+      setPlans(grouped);
     } catch (err) {
       console.error('loadPlans:', err);
+      setLoadFailed(true);
+    }
+  };
+
+  const togglePlannedDay = async (day) => {
+    const planned = plannedDays.includes(day);
+    // Optimistic: the calendar should respond to the tap immediately, and a
+    // failure reverts by reloading the truth rather than guessing.
+    setPlannedDays(list => (planned ? list.filter(d => d !== day) : [...list, day]));
+    try {
+      if (planned) await fitnessApi.unplanDay(day);
+      else await fitnessApi.planDay(day);
+    } catch (err) {
+      console.error('togglePlannedDay:', err);
+      setPlannedDays(list => (planned ? [...list, day] : list.filter(d => d !== day)));
     }
   };
 
@@ -96,90 +218,398 @@ function App() {
       setWorkoutHistory(all);
     } catch (err) {
       console.error('loadHistory:', err);
+      setLoadFailed(true);
     }
   };
 
+  // Declared after the loaders it calls: this eslint config errors on
+  // use-before-declaration for const arrow functions.
+  useEffect(() => {
+    if (!userId) return;
+    loadPlans();
+    loadHistory();
+    loadPlannedDays();
+  }, [userId]);
+
   // ── Plan Creation ─────────────────────────────────────────────────────────
+  const planPayload = () => ({
+    name: planName.trim(),
+    exercise_rest_seconds: Math.max(0, Math.round(Number(planExerciseRest) || 0)),
+    exercises: planExercises.map(ex => ({
+      exercise_name: ex.exerciseName,
+      target_sets: Math.max(1, Math.round(Number(ex.sets) || 0)),
+      target_reps: Math.max(1, Math.round(Number(ex.reps) || 0)),
+      target_weight: Math.max(0, Number(ex.weight) || 0),
+      rest_seconds: Math.max(0, Math.round(Number(ex.rest) || 0)),
+      weight_increment: Math.max(0, Number(ex.weightInc) || 0),
+      rep_increment: Math.max(0, Math.round(Number(ex.repInc) || 0)),
+    })),
+  });
+
+  // Turn a grouped plan back into the form's draft shape.
+  const startEditingPlan = (plan) => {
+    setEditingProgramId(plan.programId);
+    setPlanName(plan.programName);
+    setPlanExerciseRest(String(plan.exerciseRestSeconds ?? 180));
+    setPlanExercises(plan.exercises.map(ex => ({
+      key: `${ex.exercise_name}-${ex.id}`,
+      exerciseName: ex.exercise_name,
+      sets: String(ex.target_sets ?? ''),
+      reps: String(ex.target_reps ?? ''),
+      weight: String(ex.target_weight ?? 0),
+      rest: String(ex.rest_seconds ?? 90),
+      weightInc: String(ex.weight_increment ?? 0),
+      repInc: String(ex.rep_increment ?? 0),
+    })));
+  };
+
+  const cancelEditingPlan = () => {
+    setEditingProgramId(null);
+    setPlanName('');
+    setPlanExerciseRest('180');
+    setPlanExercises([]);
+  };
+
+  const handleDeletePlan = async (plan) => {
+    const sessions = workoutHistory.filter(
+      h => plan.exercises.some(ex => ex.id === h.schedule_id)
+    ).length;
+    const note = sessions > 0
+      ? `
+
+${sessions} logged session${sessions === 1 ? '' : 's'} will be kept in your history.`
+      : '';
+    if (!window.confirm(`Delete "${plan.programName}"?${note}`)) return;
+
+    try {
+      await fitnessApi.deletePlan(plan.programId);
+      if (selectedPlan?.programId === plan.programId) setSelectedPlan(null);
+      if (editingProgramId === plan.programId) cancelEditingPlan();
+      await loadPlans();
+      await loadHistory();
+    } catch (err) {
+      alert('Error deleting plan: ' + err.message);
+    }
+  };
+
   const handleCreatePlan = async (e) => {
     e.preventDefault();
-    if (!planName.trim() || !planSets || !planReps) {
-      alert('Please fill in all fields');
-      return;
+    if (creatingPlan) return;
+    if (!planName.trim()) { alert('Give the plan a name'); return; }
+    if (planExercises.length === 0) { alert('Add at least one exercise'); return; }
+
+    for (const ex of planExercises) {
+      if (!ex.sets || Number(ex.sets) < 1) {
+        alert(`${ex.exerciseName}: sets must be at least 1`);
+        return;
+      }
+      if (!ex.reps || Number(ex.reps) < 1) {
+        alert(`${ex.exerciseName}: reps must be at least 1`);
+        return;
+      }
     }
+
+    setCreatingPlan(true);
     try {
-      // Create a program with the plan name, then add one schedule
-      const progRes = await fitnessApi.createProgram(planName.trim());
-      const programId = progRes.data?.data?.[0]?.id;
-      if (!programId) throw new Error('Could not create plan');
+      // Same payload either way: editing replaces the plan wholesale, which
+      // is what lets add, remove and edit be one operation.
+      if (editingProgramId) {
+        await fitnessApi.updatePlan(editingProgramId, planPayload());
+      } else {
+        await fitnessApi.createPlan(planPayload());
+      }
 
-      await fitnessApi.createSchedule({
-        program_id: programId,
-        week: 1,
-        exercise_name: planExercise,
-        target_weight: parseFloat(planWeight) || 0,
-        target_sets: parseInt(planSets),
-        target_reps: parseInt(planReps),
-      });
-
+      setEditingProgramId(null);
       setPlanName('');
-      setPlanSets('');
-      setPlanReps('');
-      setPlanWeight('0');
-      loadPlans();
-      alert(`Plan "${planName}" created!`);
+      setPlanExerciseRest('180');
+      setPlanExercises([]);
+      await loadPlans();
+      // Targets may have changed, so the grading shown in Progress can move.
+      await loadHistory();
+      return true;
     } catch (err) {
-      alert('Error creating plan: ' + err.message);
+      alert(`Error ${editingProgramId ? 'updating' : 'creating'} plan: ` + err.message);
+      return false;
+    } finally {
+      setCreatingPlan(false);
     }
   };
 
   // ── Workout Session ───────────────────────────────────────────────────────
+  const resetSession = () => {
+    // The one place a session ends for good — cancelled, finished and logged,
+    // or replaced by a new one. The saved snapshot goes with it, so the next
+    // visit to this tab is not offered a workout that is already over.
+    clearSession(userId);
+    setSnapshot(null);
+    setSessionState('idle');
+    setRestRemaining(0);
+    setGetReadyRemaining(0);
+    setExerciseIndex(0);
+    setCompletedByExercise([]);
+    setCurrentSet(1);
+    setLiveReps(0);
+    setResults([]);
+  };
+
+  const onStartPlan = (p) => {
+    resetSession();
+    setSelectedPlan(p);
+    setActiveTab('counter');
+  };
+
   const startSession = () => {
     if (!selectedPlan) { alert('Select a plan first'); return; }
+    // iOS blocks audio until the page has had a user gesture. This tap is one,
+    // so unlock the context here or the countdown beeps never sound.
+    primeAudio();
     setCurrentSet(1);
-    setCompletedSets([]);
+    setExerciseIndex(0);
+    setCompletedByExercise(selectedPlan.exercises.map(() => []));
     setLiveReps(0);
     setCameraResetKey(k => k + 1);
     setSessionState('active');
   };
 
   const doneSet = () => {
-    if (liveReps < 1) return; // Q3: require at least 1 rep
-    const newSets = [...completedSets, liveReps];
-    setCompletedSets(newSets);
+    if (liveReps < 1 || !currentExercise) return;
+
+    const forThisExercise = [...(completedByExercise[exerciseIndex] ?? []), liveReps];
+    const next = completedByExercise.map((v, i) => (i === exerciseIndex ? forThisExercise : v));
+    setCompletedByExercise(next);
     setLiveReps(0);
 
-    if (newSets.length >= selectedPlan.target_sets) {
-      // All sets done
-      setSessionState('done');
-    } else {
+    const moreSets = forThisExercise.length < currentExercise.target_sets;
+    const moreExercises = exerciseIndex < selectedPlan.exercises.length - 1;
+
+    if (moreSets) {
       setCurrentSet(s => s + 1);
-      setCameraResetKey(k => k + 1); // reset counter for next set
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(currentExercise.rest_seconds ?? 90);
+      setSessionState('resting');
+    } else if (moreExercises) {
+      // Longer gap between exercises: time to change station or weights.
+      setExerciseIndex(i => i + 1);
+      setCurrentSet(1);
+      setCameraResetKey(k => k + 1);
+      setRestRemaining(selectedPlan.exerciseRestSeconds ?? 180);
+      setSessionState('resting');
+    } else {
+      setSessionState('done');
     }
   };
 
+  // Tick rest down to zero and stop there. Hitting zero does NOT start the
+  // next set -- the user taps when they are actually ready.
+  useEffect(() => {
+    if (sessionState !== 'resting' || restRemaining <= 0) return;
+    const id = setInterval(() => setRestRemaining(r => (r > 0 ? r - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [sessionState, restRemaining]);
+
+  // One tone the moment rest runs out.
+  useEffect(() => {
+    if (sessionState === 'resting' && restRemaining === 0) {
+      say('Rest over', { fallback: { frequency: 660, duration: 0.3 } });
+    }
+  }, [sessionState, restRemaining]);
+
+  // Seconds of lead-in after tapping start. Long enough to put the phone
+  // down and get into position -- 5 was not.
+  const GET_READY_SECONDS = 8;
+
+  const beginGetReady = () => {
+    primeAudio();
+    setGetReadyRemaining(GET_READY_SECONDS);
+    setSessionState('getready');
+    // Speak the opening number here: the ticking effect below only fires a
+    // second later, so without this the first number is shown but never said.
+    say(GET_READY_SECONDS, { fallback: { frequency: 880, duration: 0.1 } });
+  };
+
+  const addRestTime = (seconds) => setRestRemaining(r => Math.max(0, r + seconds));
+
+  // Mirror the session to localStorage so a reload — or iOS quietly
+  // discarding the tab while you were off reading something — can pick it
+  // back up. This only ever writes; clearing happens where a session
+  // genuinely ends (resetSession, discardResume), because an effect that
+  // cleared whenever nothing was running would wipe the snapshot on mount,
+  // which is precisely when it is needed.
+  //
+  // 'done' keeps saving too: the Done screen is where logs are written, and
+  // a reload there should not lose the sets that produced them.
+  useEffect(() => {
+    if (!userId || sessionState === 'idle' || !selectedPlan) return;
+    saveSession(userId, {
+      planId: selectedPlan.id,
+      exerciseIndex,
+      currentSet,
+      completedByExercise,
+    });
+  }, [userId, sessionState, selectedPlan, exerciseIndex, currentSet, completedByExercise]);
+
+  const resumeWorkout = () => {
+    if (!resumePlan) return;
+    setSelectedPlan(resumePlan);
+    setExerciseIndex(snapshot.exerciseIndex);
+    setCurrentSet(snapshot.currentSet);
+    setCompletedByExercise(snapshot.completedByExercise);
+    setLiveReps(0);
+    setRestRemaining(0);
+    setSnapshot(null);
+    // Straight into the lead-in rather than 'active': this tap is the user
+    // gesture iOS needs to unlock audio, and the phone is in their hand, not
+    // propped up facing them.
+    beginGetReady();
+  };
+
+  const discardResume = () => {
+    clearSession(userId);
+    setSnapshot(null);
+  };
+
+  // Lead-in. The camera mounts and warms during this, so the set starts
+  // against a live feed rather than a cold one.
+  useEffect(() => {
+    if (sessionState !== 'getready') return;
+
+    // Everything happens inside the timer callback: transitioning straight
+    // from the effect body would be a synchronous setState in an effect.
+    const id = setTimeout(() => {
+      if (getReadyRemaining <= 1) {
+        // Throw away whatever the warming camera saw before you were set.
+        setLiveReps(0);
+        setCameraResetKey(k => k + 1);
+        setSessionState('active');
+        say('Go', { fallback: { frequency: 1320, duration: 0.25 } });
+      } else {
+        setGetReadyRemaining(n => n - 1);
+        say(getReadyRemaining - 1, { fallback: { frequency: 880, duration: 0.1 } });
+      }
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [sessionState, getReadyRemaining]);
+
   const finishWorkout = async () => {
+    // Guard against a double tap: this now makes N sequential round trips
+    // (one per exercise), so the in-flight window can be seconds on slow
+    // wifi, and there is no dedup or delete on the backend -- a second tap
+    // would permanently write duplicate logs.
+    if (saving) return;
+    setSaving(true);
     try {
-      await fitnessApi.logWorkout({
-        schedule_id: selectedPlan.id,
-        log_name: `Session ${new Date().toLocaleDateString()}`,
-        actual_weight: selectedPlan.target_weight,
-        actual_reps: completedSets,
-      });
-      setSessionState('idle');
-      setCompletedSets([]);
-      setCurrentSet(1);
+      const stamp = new Date().toLocaleDateString();
+      const outcomes = [];
+
+      for (let i = 0; i < selectedPlan.exercises.length; i++) {
+        const exercise = selectedPlan.exercises[i];
+        const reps = completedByExercise[i] ?? [];
+        if (reps.length === 0) continue; // never started; nothing to record
+
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: exercise.target_weight,
+            actual_reps: reps,
+          });
+          outcomes.push({
+            exercise,
+            reps,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('logWorkout:', exercise.exercise_name, err);
+          outcomes.push({ exercise, reps, logged: false, passed: false });
+        }
+      }
+
       await loadHistory();
+      setResults(outcomes);
+
+      // Offer progression only for exercises that passed AND have something to
+      // progress by; an exercise that failed stays on its current week.
+      const anyFailed = outcomes.some(o => !o.logged);
+      const advancable = outcomes.filter(isAdvancable);
+
+      // Only leave automatically when there is nothing for the user to see or
+      // decide. A failed log has to stay on screen, or it reads as a success.
+      if (advancable.length === 0 && !anyFailed) {
+        resetSession();
+        setActiveTab('progress');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Re-post only the exercises that failed to log. Entries that already
+  // landed (`logged: true`) are left alone, so this can never double-post
+  // one that already succeeded.
+  const retryFailedLogs = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const stamp = new Date().toLocaleDateString();
+      const next = [];
+      for (const outcome of results) {
+        if (outcome.logged) { next.push(outcome); continue; }
+        try {
+          const res = await fitnessApi.logWorkout({
+            schedule_id: outcome.exercise.id,
+            log_name: `Session ${stamp}`,
+            actual_weight: outcome.exercise.target_weight,
+            actual_reps: outcome.reps,
+          });
+          next.push({
+            ...outcome,
+            logged: true,
+            passed: res.data?.status_calculated === 'PASS',
+          });
+        } catch (err) {
+          console.error('retry logWorkout:', outcome.exercise.exercise_name, err);
+          next.push(outcome);
+        }
+      }
+      await loadHistory();
+      setResults(next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmProgression = async () => {
+    // Guard against a double tap: the backend's existence check and its insert
+    // are two separate round trips, so two in-flight calls can both decide to
+    // create week+1 and produce a duplicate the app has no way to delete.
+    if (advancing) return;
+    setAdvancing(true);
+    try {
+      const advancable = results.filter(isAdvancable);
+
+      // Sequential, and /advance is idempotent, so a partial failure can be
+      // retried without duplicating the rows that already landed.
+      for (const o of advancable) {
+        await fitnessApi.advanceSchedule(o.exercise.id);
+      }
+      await loadPlans();
+      resetSession();
       setActiveTab('progress');
     } catch (err) {
-      alert('Error saving workout: ' + err.message);
+      alert('Error creating next week: ' + err.message);
+    } finally {
+      setAdvancing(false);
     }
+  };
+
+  const skipProgression = () => {
+    resetSession();
+    setActiveTab('progress');
   };
 
   const cancelSession = () => {
-    setSessionState('idle');
-    setCompletedSets([]);
-    setCurrentSet(1);
-    setLiveReps(0);
+    resetSession();
   };
 
   // ── Chart Data ────────────────────────────────────────────────────────────
@@ -188,414 +618,163 @@ function App() {
     datasets: [{
       label: 'Total Reps',
       data: workoutHistory.map(l => (l.actual_reps || []).reduce((a, b) => a + b, 0)).reverse(),
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.15)',
-      tension: 0.4,
-      fill: true,
+      borderColor: '#0A0A0A',
+      backgroundColor: 'transparent',
+      pointBackgroundColor: '#D4F034',
+      pointBorderColor: '#0A0A0A',
+      pointRadius: 4,
+      borderWidth: 2,
+      tension: 0.35,
+      fill: false,
     }],
   };
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true } },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+        ticks: { color: '#6B6B70', font: { size: 11 } },
+      },
+      x: {
+        grid: { display: false },
+        ticks: { color: '#6B6B70', font: { size: 11 } },
+      },
+    },
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) return <div className="empty">Loading…</div>;
+  // Before the session check, not after: a recovery link signs the user in,
+  // so they would otherwise land in the app with the reset unfinished.
+  if (recovery) return <ResetPasswordScreen />;
+  if (!session) return <LoginScreen />;
+
   return (
     <div className="app-shell">
 
-      {/* ── Header ── */}
-      <header className="app-header">
-        <div className="app-header-title">💪 GymPulse</div>
-        <div className="app-header-subtitle">AI-Powered Rep Counter</div>
-      </header>
-
       {/* ── Content ── */}
-      <main className="app-content animate-fade-in">
+      <main className={`app-content${cameraFull ? ' app-content-full' : ''}`}>
 
-        {/* ══════════════════════════════════════════
-            TAB: COUNTER
-        ══════════════════════════════════════════ */}
-        {activeTab === 'counter' && (
-          <div>
-
-            {/* IDLE — Plan selector */}
-            {sessionState === 'idle' && (
-              <>
-                <p className="section-label">Today's Workout</p>
-                <div className="card">
-                  {plans.length === 0 ? (
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textAlign: 'center', padding: '12px 0' }}>
-                      No plans yet. Go to Plan tab to create one 👉
-                    </p>
-                  ) : (
-                    <>
-                      <label>Select Plan</label>
-                      <select
-                        value={selectedPlan?.id || ''}
-                        onChange={(e) => {
-                          const p = plans.find(x => x.id === parseInt(e.target.value) || x.id === e.target.value);
-                          setSelectedPlan(p || null);
-                        }}
-                        style={{ marginBottom: 14 }}
-                      >
-                        <option value="">-- Choose a plan --</option>
-                        {plans.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.programName} — {p.exercise_name} ({p.target_sets}×{p.target_reps})
-                          </option>
-                        ))}
-                      </select>
-
-                      {selectedPlan && (
-                        <div style={{ background: 'var(--bg-secondary)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: '0.88rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>Exercise</span>
-                            <strong>{EXERCISE_CONFIGS[selectedPlan.exercise_name]?.label || selectedPlan.exercise_name}</strong>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>Target</span>
-                            <strong>{selectedPlan.target_sets} sets × {selectedPlan.target_reps} reps</strong>
-                          </div>
-                          {selectedPlan.target_weight > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Weight</span>
-                              <strong>{selectedPlan.target_weight} kg</strong>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Auto / Manual camera toggle */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        <span>Camera:</span>
-                        <button
-                          onClick={() => setAutoCamera(a => !a)}
-                          style={{
-                            padding: '4px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                            background: autoCamera ? '#6366f1' : 'var(--bg-secondary)',
-                            color: autoCamera ? '#fff' : 'var(--text-secondary)',
-                            fontWeight: 600, fontSize: '0.8rem',
-                          }}
-                        >
-                          {autoCamera ? '⚡ Auto' : '🖐 Manual'}
-                        </button>
-                      </div>
-
-                      <button
-                        className="btn btn-primary"
-                        onClick={startSession}
-                        disabled={!selectedPlan}
-                      >
-                        🚀 Start Workout
-                      </button>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* ACTIVE — Workout in progress */}
-            {sessionState === 'active' && selectedPlan && (
-              <>
-                {/* Progress banner */}
-                <div style={{
-                  background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                  borderRadius: 14, padding: '14px 16px', marginBottom: 12,
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                  <div>
-                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', marginBottom: 2 }}>
-                      {EXERCISE_CONFIGS[selectedPlan.exercise_name]?.label}
-                    </div>
-                    <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
-                      Set {currentSet} of {selectedPlan.target_sets}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem' }}>This set</div>
-                    <div style={{ color: '#00ffcc', fontWeight: 800, fontSize: '1.4rem' }}>{liveReps}</div>
-                  </div>
-                </div>
-
-                {/* Completed sets tracker */}
-                {completedSets.length > 0 && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                    {completedSets.map((reps, i) => (
-                      <div key={i} style={{
-                        background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)',
-                        borderRadius: 8, padding: '6px 10px', textAlign: 'center', minWidth: 50,
-                      }}>
-                        <div style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>Set {i + 1}</div>
-                        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#34d399' }}>{reps}</div>
-                      </div>
-                    ))}
-                    <div style={{
-                      background: 'rgba(99,102,241,0.1)', border: '1px dashed rgba(99,102,241,0.4)',
-                      borderRadius: 8, padding: '6px 10px', textAlign: 'center', minWidth: 50,
-                    }}>
-                      <div style={{ fontSize: '0.65rem', color: '#818cf8' }}>Set {currentSet}</div>
-                      <div style={{ fontWeight: 800, fontSize: '1rem', color: '#818cf8' }}>…</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Total reps so far */}
-                <div style={{ textAlign: 'center', marginBottom: 10, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Total reps done: <strong style={{ color: 'var(--text-primary)' }}>
-                    {completedSets.reduce((a, b) => a + b, 0) + liveReps}
-                  </strong>
-                  {selectedPlan.target_weight > 0 && (
-                    <span> · Weight: <strong style={{ color: 'var(--text-primary)' }}>{selectedPlan.target_weight}kg</strong></span>
-                  )}
-                </div>
-
-                {/* Camera */}
-                <AICameraCounter
-                  exerciseLocked={selectedPlan.exercise_name}
-                  autoStart={autoCamera}
-                  resetKey={cameraResetKey}
-                  onRepUpdate={setLiveReps}
-                />
-
-                {/* Done Set / Cancel */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button
-                    className="btn btn-success"
-                    onClick={doneSet}
-                    disabled={liveReps < 1}
-                    style={{ flex: 2 }}
-                  >
-                    ✅ Done Set ({liveReps} reps)
-                  </button>
-                  <button
-                    onClick={cancelSession}
-                    style={{
-                      flex: 1, background: 'rgba(239,68,68,0.15)', color: '#f87171',
-                      border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10,
-                      padding: 13, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* DONE — Workout complete */}
-            {sessionState === 'done' && selectedPlan && (
-              <>
-                <div style={{
-                  background: 'linear-gradient(135deg, #059669, #10b981)',
-                  borderRadius: 14, padding: '20px 16px', marginBottom: 14, textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '2.5rem' }}>🎉</div>
-                  <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.2rem', marginTop: 6 }}>
-                    Workout Complete!
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', marginTop: 4 }}>
-                    {completedSets.length} sets · {completedSets.reduce((a, b) => a + b, 0)} total reps
-                  </div>
-                </div>
-
-                <p className="section-label">Set Breakdown</p>
-                <div className="card" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {completedSets.map((reps, i) => (
-                    <div key={i} style={{
-                      background: 'var(--bg-secondary)', borderRadius: 10, padding: '10px 14px',
-                      textAlign: 'center', flex: '1 1 60px',
-                    }}>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Set {i + 1}</div>
-                      <div style={{ fontWeight: 800, fontSize: '1.3rem' }}>{reps}</div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>reps</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button className="btn btn-success" onClick={finishWorkout} style={{ flex: 2 }}>
-                    💾 Save & View Progress
-                  </button>
-                  <button
-                    onClick={cancelSession}
-                    style={{
-                      flex: 1, background: 'transparent', color: 'var(--text-secondary)',
-                      border: '1px solid var(--border)', borderRadius: 10,
-                      padding: 13, cursor: 'pointer', fontSize: '0.85rem',
-                    }}
-                  >
-                    Discard
-                  </button>
-                </div>
-              </>
-            )}
-
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════
-            TAB: PLAN
-        ══════════════════════════════════════════ */}
-        {activeTab === 'plan' && (
-          <div>
-            <p className="section-label">Create Workout Plan</p>
-            <div className="card">
-              <form onSubmit={handleCreatePlan}>
-                <div className="input-group">
-                  <label>Plan Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Morning Push Day"
-                    value={planName}
-                    onChange={e => setPlanName(e.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Exercise</label>
-                  <select value={planExercise} onChange={e => setPlanExercise(e.target.value)}>
-                    {EXERCISE_OPTIONS.map(({ key, label }) => (
-                      <option key={key} value={key}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }} className="input-group">
-                  <div style={{ flex: 1 }}>
-                    <label>Sets</label>
-                    <input type="number" min="1" placeholder="5" value={planSets} onChange={e => setPlanSets(e.target.value)} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label>Reps / Set</label>
-                    <input type="number" min="1" placeholder="10" value={planReps} onChange={e => setPlanReps(e.target.value)} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label>Weight (kg)</label>
-                    <input type="number" min="0" step="0.5" placeholder="0" value={planWeight} onChange={e => setPlanWeight(e.target.value)} />
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-primary">+ Create Plan</button>
-              </form>
+        {/* Above every tab, because a failed load empties all of them at
+            once and the cause is the same in each. */}
+        {loadFailed && (
+          <div className="banner-error" role="alert">
+            <CloudOff size={18} strokeWidth={1.5} />
+            <div>
+              <div className="banner-title">Couldn&rsquo;t reach the server</div>
+              <div className="banner-sub">Your data is safe. Check the connection and try again.</div>
             </div>
-
-            {plans.length > 0 && (
-              <>
-                <p className="section-label">My Plans</p>
-                {plans.map(p => (
-                  <div key={p.id} className="log-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{p.programName}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {EXERCISE_CONFIGS[p.exercise_name]?.label || p.exercise_name} · {p.target_sets}×{p.target_reps}{p.target_weight > 0 ? ` @ ${p.target_weight}kg` : ''}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedPlan(p); setActiveTab('counter'); }}
-                      style={{
-                        background: '#6366f1', color: '#fff', border: 'none',
-                        borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
-                        fontSize: '0.8rem', fontWeight: 700,
-                      }}
-                    >
-                      Start →
-                    </button>
-                  </div>
-                ))}
-              </>
-            )}
+            <button type="button" className="btn btn-sm btn-secondary" onClick={retryLoad}>
+              <RotateCw size={15} strokeWidth={1.5} />
+              Retry
+            </button>
           </div>
         )}
 
-        {/* ══════════════════════════════════════════
-            TAB: PROGRESS
-        ══════════════════════════════════════════ */}
-        {activeTab === 'progress' && (
-          <div>
-            {workoutHistory.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 16px' }}>
-                <div style={{ fontSize: '3rem', marginBottom: 12 }}>📊</div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Complete a workout to see your progress here!
-                </p>
-              </div>
-            ) : (
-              <>
-                <p className="section-label">Total Reps Over Time</p>
-                <div className="card">
-                  <Line options={chartOptions} data={chartData} />
-                </div>
-
-                <p className="section-label">Session History</p>
-                {/* Table header */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1.2fr 0.7fr 0.7fr 0.6fr',
-                  gap: 4, padding: '8px 12px',
-                  fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)',
-                  textTransform: 'uppercase', letterSpacing: '0.06em',
-                }}>
-                  <span>Date</span>
-                  <span>Exercise</span>
-                  <span style={{ textAlign: 'center' }}>Sets</span>
-                  <span style={{ textAlign: 'center' }}>Reps</span>
-                  <span style={{ textAlign: 'center' }}>Result</span>
-                </div>
-
-                {workoutHistory.map(log => {
-                  const repsArr = Array.isArray(log.actual_reps) ? log.actual_reps : [];
-                  const totalReps = repsArr.reduce((a, b) => a + b, 0);
-                  const setsDone = repsArr.length;
-                  return (
-                    <div key={log.id} style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1.2fr 0.7fr 0.7fr 0.6fr',
-                      gap: 4, padding: '12px',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 10, marginBottom: 6,
-                      alignItems: 'center',
-                    }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                        {new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </span>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>
-                        {log.exercise_name}
-                      </span>
-                      <span style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700 }}>
-                        {setsDone}/{log.target_sets}
-                      </span>
-                      <span style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: 700 }}>
-                        {totalReps}
-                      </span>
-                      <span style={{ textAlign: 'center' }}>
-                        <span className={`badge ${log.status === 'PASS' ? 'badge-pass' : 'badge-fail'}`}
-                          style={{ fontSize: '0.65rem', padding: '3px 6px' }}>
-                          {log.status === 'PASS' ? '✅' : '❌'}
-                        </span>
-                      </span>
-                    </div>
-                  );
-                })}
-              </>
-            )}
+        {/* Kept mounted (merely hidden) while a session is active: unmounting
+            would tear down the camera and reset the rep counter mid-set. */}
+        {(activeTab === 'counter' || sessionLive) && (
+          <div className="tab-pane" hidden={activeTab !== 'counter'}>
+          <WorkoutTab
+            plans={plans}
+            loadFailed={loadFailed}
+            resumePlan={resumePlan}
+            resumeSnapshot={snapshot}
+            onResumeWorkout={resumeWorkout}
+            onDiscardResume={discardResume}
+            selectedPlan={selectedPlan}
+            setSelectedPlan={setSelectedPlan}
+            sessionState={sessionState}
+            currentSet={currentSet}
+            currentExercise={currentExercise}
+            completedSets={completedSets}
+            completedByExercise={completedByExercise}
+            liveReps={liveReps}
+            setLiveReps={setLiveReps}
+            cameraResetKey={cameraResetKey}
+            autoCamera={autoCamera}
+            setAutoCamera={setAutoCamera}
+            results={results}
+            advancing={advancing}
+            saving={saving}
+            startSession={startSession}
+            doneSet={doneSet}
+            finishWorkout={finishWorkout}
+            retryFailedLogs={retryFailedLogs}
+            confirmProgression={confirmProgression}
+            skipProgression={skipProgression}
+            cancelSession={cancelSession}
+            restRemaining={restRemaining}
+            getReadyRemaining={getReadyRemaining}
+            beginGetReady={beginGetReady}
+            addRestTime={addRestTime}
+          />
           </div>
+        )}
+
+        {activeTab === 'plan' && (
+          <PlanTab
+            plans={plans}
+            planName={planName}
+            setPlanName={setPlanName}
+            planExerciseRest={planExerciseRest}
+            setPlanExerciseRest={setPlanExerciseRest}
+            planExercises={planExercises}
+            editingProgramId={editingProgramId}
+            onStartEditPlan={startEditingPlan}
+            onCancelEditPlan={cancelEditingPlan}
+            onDeletePlan={handleDeletePlan}
+            setPlanExercises={setPlanExercises}
+            handleCreatePlan={handleCreatePlan}
+            onStartPlan={onStartPlan}
+            creatingPlan={creatingPlan}
+          />
+        )}
+
+        {activeTab === 'progress' && (
+          <ProgressTab
+            loadFailed={loadFailed}
+            plannedDays={plannedDays}
+            onTogglePlannedDay={togglePlannedDay}
+            workoutHistory={workoutHistory}
+            chartData={chartData}
+            chartOptions={chartOptions}
+          />
+        )}
+
+        {activeTab === 'me' && (
+          <MeTab
+            workoutHistory={workoutHistory}
+            autoCamera={autoCamera}
+            setAutoCamera={setAutoCamera}
+          />
         )}
 
       </main>
 
       {/* ── Bottom Tab Bar ── */}
       <nav className="tab-bar">
-        <button className={`tab-btn ${activeTab === 'counter' ? 'active' : ''}`} onClick={() => setActiveTab('counter')}>
-          <span className="tab-btn-icon">📷</span>
-          Workout
-        </button>
-        <button className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`} onClick={() => setActiveTab('plan')}>
-          <span className="tab-btn-icon">📋</span>
-          Plan
-        </button>
-        <button className={`tab-btn ${activeTab === 'progress' ? 'active' : ''}`} onClick={() => setActiveTab('progress')}>
-          <span className="tab-btn-icon">📊</span>
-          Progress
-        </button>
+        {TABS.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            className={`tab-btn ${activeTab === key ? 'active' : ''}`}
+            onClick={() => setActiveTab(key)}
+          >
+            <span className="tab-icon">
+              <Icon size={22} strokeWidth={1.5} />
+              {/* A workout is running, or one is waiting to be picked back
+                  up — visible from whichever tab you wandered off to. */}
+              {key === 'counter' && (sessionLive || resumePlan) && (
+                <span className="tab-dot" aria-label="Workout in progress" />
+              )}
+            </span>
+            {label}
+          </button>
+        ))}
       </nav>
 
     </div>

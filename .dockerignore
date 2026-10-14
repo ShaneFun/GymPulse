@@ -6,8 +6,11 @@
 venv/
 **/__pycache__/
 *.pyc
+.pytest_cache/
 frontend/
 docs/
-tests/
+backend/tests/
+.superpowers/
+.worktrees/
 .idea/
 .vscode/

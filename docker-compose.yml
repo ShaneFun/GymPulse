@@ -1,15 +1,13 @@
 # Run the whole app locally with one command:
 #   docker compose up --build
-# Web app: http://localhost:8080   API: http://localhost:8000
-# Needs a .env file in the project root with SUPABASE_URL and SUPABASE_KEY.
-# Port 8080 busy on your machine? Add WEB_PORT=3080 (any free port) to .env.
+# Web app: http://localhost:8080  (the API is reached through it at /api)
+#
+# Needs a .env file in the project root with SUPABASE_URL and SUPABASE_KEY
+# (the publishable key). Port 8080 busy? Add WEB_PORT=3080 (any free port) to .env.
 services:
   api:
     build: .
     env_file: .env
-    environment:
-      # the browser loads the web app from WEB_PORT, so allow that origin
-      ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-8080}
     ports:
       - "8000:8000"
 
@@ -17,8 +15,10 @@ services:
     build:
       context: ./frontend
       args:
-        # the browser runs on your machine, so it reaches the API on localhost
-        VITE_API_URL: http://localhost:8000
+        # the browser signs in with Supabase directly, using the same
+        # project URL and publishable key as the API
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:

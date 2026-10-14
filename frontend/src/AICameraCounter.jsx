@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Camera } from 'lucide-react';
 
 // Exercise configurations ported from Good-GYM's exercises.json
 // MediaPipe landmark indices:
@@ -85,17 +86,25 @@ export { EXERCISE_CONFIGS };
 
 /**
  * Props:
- *  onApplyCount(reps)  — called when user presses "Use Count" (optional)
  *  onRepUpdate(reps)   — called live on every new rep (optional)
  *  resetKey            — increment this number to reset counter to 0
  *  autoStart           — start camera immediately on mount (default false)
  *  exerciseLocked      — exercise key string; if set, hides the dropdown
+ *  onControls(state)   — called with { isCameraActive, startCamera, stopCamera,
+ *                         resetCount } so the parent can render its own
+ *                         control row instead of the camera owning session UI
+ *  overlay             — optional ReactNode rendered absolutely over the
+ *                         video (the parent supplies session readouts like
+ *                         "Set 2 of 3" — the camera has no concept of a set)
  */
-function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null }) {
+function AICameraCounter({
+  onRepUpdate, resetKey = 0, autoStart = false, exerciseLocked = null, onControls, overlay = null,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [exercise, setExercise] = useState(exerciseLocked || 'bicep_curl');
-  const [repCount, setRepCount] = useState(0);
+  // The live rep count is owned by the parent: repCountRef is the source of
+  // truth and reaches WorkoutTab through onRepUpdate, so no local state here.
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [feedback, setFeedback] = useState('Stand in frame');
 
@@ -106,10 +115,34 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
   const poseInstanceRef = useRef(null);
   const angleHistoryRef = useRef([]);
   const onRepUpdateRef = useRef(onRepUpdate);
+  const onControlsRef = useRef(onControls);
 
   useEffect(() => { onRepUpdateRef.current = onRepUpdate; }, [onRepUpdate]);
+  useEffect(() => { onControlsRef.current = onControls; }, [onControls]);
 
-  // Sync exercise ref when dropdown changes
+  // exerciseLocked can change while mounted (a session moving to its next
+  // exercise, kept mounted so the camera survives the transition). Without
+  // resyncing, the camera keeps counting against the previous exercise's
+  // joint config, with nothing visibly wrong -- exercise 1 today is only
+  // correct because the active block happens to unmount during rest.
+  //
+  // This is done during render (the "adjusting state when a prop changes"
+  // pattern: https://react.dev/learn/you-might-not-need-an-effect), not in
+  // a useEffect -- this file already has one react-hooks/set-state-in-effect
+  // error below (setFeedback in the auto-start effect), and calling
+  // setExercise from another effect would add a second, near-identical
+  // violation. The comparison is tracked in state, not a ref: the lint
+  // config here (react-hooks v7, compiler-based) flags reading ref.current
+  // during render, so this follows React's own version of the pattern,
+  // which stores the previous prop in state for exactly this reason.
+  const [prevExerciseLocked, setPrevExerciseLocked] = useState(exerciseLocked);
+  if (exerciseLocked && exerciseLocked !== prevExerciseLocked) {
+    setPrevExerciseLocked(exerciseLocked);
+    setExercise(exerciseLocked);
+  }
+
+  // Sync exercise ref when the exercise changes, whether from the dropdown
+  // (uncontrolled mode) or from the exerciseLocked sync above.
   useEffect(() => {
     exerciseRef.current = exercise;
     stageRef.current = null;
@@ -119,7 +152,6 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
   // Reset counter when resetKey changes (parent triggers this between sets)
   useEffect(() => {
     repCountRef.current = 0;
-    setRepCount(0);
     stageRef.current = null;
     angleHistoryRef.current = [];
   }, [resetKey]);
@@ -127,7 +159,7 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
   // Auto-start or cleanup on unmount
   useEffect(() => {
     if (!window.Pose || !window.Camera) {
-      setFeedback('⚠️ MediaPipe failed to load. Check index.html script tags.');
+      setFeedback('MediaPipe failed to load. Check index.html script tags.');
       return;
     }
     if (autoStart) {
@@ -207,9 +239,24 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
   const onResults = (results) => {
     if (!canvasRef.current || !videoRef.current) return;
 
-    const ctx = canvasRef.current.getContext('2d');
-    const w = canvasRef.current.width;
-    const h = canvasRef.current.height;
+    const canvas = canvasRef.current;
+
+    // Match the canvas to the camera's real frame size. Without this the
+    // backing store stays at its markup default and drawImage stretches the
+    // frame to fit, which visibly squashes a portrait phone camera into a
+    // landscape box. Keeping them equal also means the 1:1 draw below and the
+    // landmark maths (lm.x * w) stay correct for any camera aspect ratio.
+    // Only assign on change: writing width/height resets the whole context.
+    const srcW = results.image.width;
+    const srcH = results.image.height;
+    if (srcW && srcH && (canvas.width !== srcW || canvas.height !== srcH)) {
+      canvas.width = srcW;
+      canvas.height = srcH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
@@ -234,7 +281,6 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
 
     const addRep = () => {
       repCountRef.current += 1;
-      setRepCount(repCountRef.current);
       onRepUpdateRef.current?.(repCountRef.current);
     };
 
@@ -249,18 +295,25 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
 
   // ── Drawing Helpers ─────────────────────────────────────
   const drawAngleText = (ctx, angle, lm, w, h) => {
+    // Sized from the frame, not fixed pixels: the canvas now matches the
+    // camera's real resolution, so a fixed 18px would shrink to nothing once
+    // a 720p phone frame is scaled down into the card.
+    const scale = w / 640;
     ctx.save();
-    ctx.fillStyle = '#00ffcc';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText(`${Math.round(angle)}°`, w - lm.x * w + 12, lm.y * h);
+    ctx.fillStyle = '#D4F034';
+    ctx.font = `bold ${Math.round(18 * scale)}px Inter, sans-serif`;
+    ctx.fillText(`${Math.round(angle)}°`, w - lm.x * w + 12 * scale, lm.y * h);
     ctx.restore();
   };
 
   const drawSkeleton = (ctx, lms, w, h) => {
+    // See drawAngleText: stroke and joint size scale with the frame so the
+    // overlay stays legible at any camera resolution.
+    const scale = w / 640;
     ctx.save();
-    ctx.strokeStyle = '#00ffcc';
-    ctx.lineWidth = 3;
-    ctx.fillStyle = '#ff0055';
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 3 * scale;
+    ctx.fillStyle = '#FFFFFF';
 
     const connections = [
       [11,12],[11,13],[13,15],[12,14],[14,16],
@@ -278,7 +331,7 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
     lms.forEach((lm, idx) => {
       if (idx > 10 && lm.visibility > 0.5) {
         ctx.beginPath();
-        ctx.arc(w - lm.x * w, lm.y * h, 5, 0, 2 * Math.PI);
+        ctx.arc(w - lm.x * w, lm.y * h, 5 * scale, 0, 2 * Math.PI);
         ctx.fill();
       }
     });
@@ -287,30 +340,32 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
 
   const resetCount = () => {
     repCountRef.current = 0;
-    setRepCount(0);
     stageRef.current = null;
+    angleHistoryRef.current = [];
+    // Tell the parent too: without this the camera's count goes to zero while
+    // the displayed count (and the Done Set button's enabled state) keep the
+    // stale value.
+    onRepUpdateRef.current?.(0);
   };
+
+  // Hand the camera's controls up to the parent (WorkoutTab) so it can
+  // render one unified control row instead of the camera owning Start/Stop/
+  // Reset buttons of its own — the camera shouldn't know what a "set" is,
+  // so it only exposes state and actions, never session UI. Deliberately
+  // keyed on isCameraActive alone: startCamera/stopCamera/resetCount only
+  // ever close over refs, so each render's versions are equivalent and the
+  // effect need not re-fire just because their identities changed.
+  useEffect(() => {
+    onControlsRef.current?.({ isCameraActive, startCamera, stopCamera, resetCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraActive]);
 
   // ── Render ──────────────────────────────────────────────
   return (
-    <div style={{
-      background: 'rgba(15,15,26,0.98)',
-      borderRadius: '16px',
-      border: '1px solid rgba(255,255,255,0.08)',
-      overflow: 'hidden',
-      width: '100%',
-    }}>
+    <>
       {!exerciseLocked && (
-        <div style={{ padding: '10px 10px 0' }}>
-          <select
-            value={exercise}
-            onChange={(e) => setExercise(e.target.value)}
-            style={{
-              width: '100%', padding: '10px', borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: '#312e81', color: 'white', fontSize: '0.95rem',
-            }}
-          >
+        <div className="card-dark-body">
+          <select value={exercise} onChange={(e) => setExercise(e.target.value)}>
             {Object.entries(EXERCISE_CONFIGS).map(([key, cfg]) => (
               <option key={key} value={key}>{cfg.label}</option>
             ))}
@@ -318,59 +373,24 @@ function AICameraCounter({ onApplyCount, onClose, onRepUpdate, resetKey = 0, aut
         </div>
       )}
 
-      {/* Camera view */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: '#000' }}>
-        <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
-        <canvas ref={canvasRef} width={400} height={300} style={{ width: '100%', height: '100%', display: 'block' }} />
-
-        <div style={{
-          position: 'absolute', top: 10, right: 10,
-          background: 'rgba(0,0,0,0.75)', padding: '6px 14px',
-          borderRadius: '20px', color: '#00ffcc', fontWeight: 'bold', fontSize: '1.3rem',
-        }}>
-          {repCount}
-        </div>
+      {/* Camera view — session readouts (set label, live rep count) are
+          supplied by the parent and overlaid on the video via `overlay`,
+          and the feedback caption is pinned to the frame too, so nothing
+          about the camera pushes controls off-screen on a phone. */}
+      <div className="camera-frame">
+        <video ref={videoRef} playsInline muted />
+        <canvas ref={canvasRef} width={640} height={480} />
+        {overlay}
+        <p className="micro camera-overlay">{feedback}</p>
 
         {!isCameraActive && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', background: 'rgba(0,0,0,0.65)',
-            flexDirection: 'column', gap: 8,
-          }}>
-            <span style={{ fontSize: '2.5rem' }}>📷</span>
-            <span style={{ color: '#fff', fontSize: '0.85rem' }}>Camera off</span>
+          <div className="camera-scrim">
+            <Camera size={32} strokeWidth={1.5} />
+            <span className="micro">Camera off</span>
           </div>
         )}
       </div>
-
-      <p style={{ color: '#94a3b8', margin: '8px 12px', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-        {feedback}
-      </p>
-
-      <div style={{ display: 'flex', gap: 8, padding: '0 10px 10px' }}>
-        {!isCameraActive ? (
-          <button onClick={startCamera} style={{ flex: 1, background: '#10b981', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-            ▶ Start Camera
-          </button>
-        ) : (
-          <button onClick={stopCamera} style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-            ⏹ Stop
-          </button>
-        )}
-        <button onClick={resetCount} style={{ background: '#374151', color: '#fff', border: 'none', padding: '11px 14px', borderRadius: '8px', cursor: 'pointer' }}>
-          ↺
-        </button>
-        {onApplyCount && (
-          <button
-            onClick={() => { stopCamera(); onApplyCount(repCount); }}
-            disabled={repCount === 0}
-            style={{ flex: 1, background: '#4f46e5', color: '#fff', border: 'none', padding: '11px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}
-          >
-            Use Count
-          </button>
-        )}
-      </div>
-    </div>
+    </>
   );
 }
 

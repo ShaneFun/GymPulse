@@ -2,7 +2,9 @@ venv/
 backend/app/__pycache__/
 .env
 .env.*
+!.env.example
 *.pyc
 .idea/
 .vscode/
+.worktrees/
 .DS_Store
