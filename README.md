@@ -90,18 +90,6 @@ tailscale serve --bg 5173
 
 That publishes the dev server over HTTPS on your tailnet only.
 
-## Run it with Docker
-
-With `SUPABASE_URL` and `SUPABASE_KEY` (publishable key) in `.env` at the project root:
-
-```bash
-docker compose up --build
-```
-
-Open http://localhost:8080. nginx serves the built app and forwards `/api` to
-the API container, the same way the Vite dev proxy does, so there is no CORS
-setup. Port 8080 busy? Add `WEB_PORT=3080` (any free port) to `.env`.
-
 ## Tests
 
 ```bash
@@ -111,7 +99,7 @@ cd frontend && npm run build
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to
-`main` and every pull request, and also builds and smoke-tests the Docker images.
+`main` and every pull request.
 
 Backend tests run against an in-memory fake of the Supabase client, so the
 suite is fast and offline. The trade-off is that the fake has no schema and
