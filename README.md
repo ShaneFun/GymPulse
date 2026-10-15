@@ -1,12 +1,29 @@
-# GymPulse
+<div align="center">
+  <h1>💪 GymPulse</h1>
+  <p><strong>A workout tracker that counts your reps through your phone's camera, in real time, without your video ever leaving the device.</strong></p>
 
-[![CI](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg)](https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml)
+  <a href="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml"><img src="https://github.com/ShaneFun/GymPulse/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React_19-blue?style=flat-square&logo=react" alt="React" /></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI" /></a>
+  <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Database_%26_Auth-Supabase-3ECF8E?style=flat-square&logo=supabase" alt="Supabase" /></a>
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"><img src="https://img.shields.io/badge/AI-MediaPipe_Pose-orange?style=flat-square&logo=google" alt="MediaPipe" /></a>
 
-A workout tracker that counts your reps through your phone's camera.
+  <br /><br />
+  <img src="docs/demo.gif" alt="GymPulse demo: real-time pose tracking counting bicep curl reps, then starting the rest timer" width="300" />
+  <p><em>Real-time pose tracking counting bicep curl reps, then starting the rest timer.</em></p>
+</div>
 
-Set a plan — *3 sets of 10 bicep curls at 20 kg* — and GymPulse uses pose estimation to count each rep, calls the numbers out loud, times your rest, then grades the session against the target and offers to raise the weight next week if you passed.
+Set a plan (*3 sets of 10 bicep curls at 20 kg*) and GymPulse uses pose estimation to count each rep, calls the numbers out loud, times your rest, then grades the session against the target and offers to raise the weight next week if you passed.
 
-Pose estimation runs entirely in the browser. **No video ever leaves the device.**
+## Highlights
+
+| | |
+|---|---|
+| **8 exercises** | curls, squats, push-ups and more, counted automatically from the camera |
+| **33 body keypoints** | tracked by Google MediaPipe Pose, entirely in the browser |
+| **0 frames uploaded** | pose estimation runs on the device: **no video is sent to any server** |
+| **Private accounts** | sign-in with Supabase Auth; row-level security scopes every row to its owner |
+| **61 backend tests** | run by GitHub Actions on every push and pull request |
 
 ## Features
 
@@ -18,14 +35,33 @@ Pose estimation runs entirely in the browser. **No video ever leaves the device.
 - **Resumable sessions** — an interrupted workout survives a reload and offers to continue
 - **Private by default** — row-level security scopes every row to its owner
 
-## Stack
+## How the AI works
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, Vite, Chart.js |
-| Pose estimation | MediaPipe Pose (in-browser, WebAssembly) |
-| Backend | FastAPI (Python 3.11) |
-| Database & auth | Supabase — PostgreSQL, PostgREST, GoTrue, Storage |
+```mermaid
+flowchart LR
+    C["Camera frame"] --> P["MediaPipe Pose<br/>(in the browser)"]
+    P -->|"33 keypoints"| A["Joint angle<br/>atan2 geometry"]
+    A --> F["5-frame<br/>smoothing"]
+    F --> S["Two thresholds<br/>down → up = 1 rep"]
+    S --> L["Workout log<br/>FastAPI + Supabase"]
+```
+
+1. **Pose estimation, privately:** the MediaPipe Pose model runs in the browser (WebAssembly), so video never leaves the device.
+2. **Joint angles:** three landmarks form the joint being measured (for a curl: shoulder, elbow, wrist) and two `atan2` calls give the angle between the limbs.
+3. **Smoothing:** a five-frame rolling average removes the jitter inherent in pose estimation.
+4. **Counting:** two thresholds, not one, decide a rep. The angle must pass the upper bound to arm and the lower to fire, which stops a paused arm from counting repeatedly.
+
+Each exercise is five numbers (three landmark indices and two angles), so adding one means adding a config entry, not writing code.
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| AI / computer vision | Google MediaPipe Pose (WebAssembly), HTML5 Canvas |
+| Frontend | React 19, Vite, Chart.js, lucide-react, supabase-js |
+| Backend | Python, FastAPI, Pydantic, PyJWT |
+| Database, auth & storage | Supabase: PostgreSQL with row-level security, Auth, Storage |
+| Testing & CI | pytest (in-memory Supabase fake), ESLint, GitHub Actions |
 
 ## Getting started
 
@@ -104,16 +140,6 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push to
 Backend tests run against an in-memory fake of the Supabase client, so the
 suite is fast and offline. The trade-off is that the fake has no schema and
 cannot catch a mismatch with the real database.
-
-## How rep counting works
-
-1. MediaPipe returns 33 body landmarks per frame.
-2. Three of them form the joint being measured — for a curl, shoulder, elbow and wrist. Two `atan2` calls give the angle between the limbs.
-3. A five-frame rolling average removes the jitter inherent in pose estimation.
-4. Two thresholds, not one, decide a rep: the angle must pass above the upper bound to arm and below the lower to fire. That gap is what stops a paused arm from counting repeatedly.
-
-Each exercise is five numbers — three landmark indices and two angles — so
-adding one means adding a config entry, not writing code.
 
 ## Project structure
 
